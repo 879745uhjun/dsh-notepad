@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Notepad",
-    "description": "A persistent notepad docked to the right edge of the interface for quick notes and images, saved automatically."
+    "description": "A persistent notepad docked to the bottom of the interface for quick notes and images, saved automatically."
   }
 }

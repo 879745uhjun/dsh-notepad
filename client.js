@@ -1,12 +1,12 @@
 /**
  * Client half of the notepad plugin.
  *
- * Registers a persistent notepad into the `shell.overlay` slot, so the surface
- * is docked to the right edge of the whole Harness window and stays independent
- * from the shipped sidebars and the built-in right panel. The drawer slides out
- * from the right edge over the interface instead of pushing it aside. Note text,
- * panel width and the collapsed state persist in localStorage; images persist in
- * IndexedDB. Every visible string comes from the Client locale service.
+ * Registers the notepad into the `shell.bottom` seat: a real layout row below the
+ * sidebar, the centre column and the right column, so nothing is ever covered.
+ * The row keeps its own height, can be collapsed to a thin bar, and survives
+ * main-panel navigation. Note text, dock height and the collapsed state persist
+ * in localStorage; images persist in IndexedDB. Every visible string comes from
+ * the Client locale service.
  */
 window.__ModuleLoader__.load({
   id: '@local/dsh-notepad',
@@ -20,11 +20,10 @@ window.__ModuleLoader__.load({
     const DB_NAME = 'dsh-notepad';
     const DB_VERSION = 1;
     const STORE_IMAGES = 'images';
-    const MIN_WIDTH = 260;
-    const MAX_WIDTH = 560;
-    const DEFAULT_WIDTH = 300;
-    const RAIL_WIDTH = 40;
-    const MAX_OFFSET = 720;
+    const BAR_HEIGHT = 38;
+    const MIN_HEIGHT = 120;
+    const MAX_HEIGHT = 720;
+    const DEFAULT_HEIGHT = 220;
     const MAX_IMAGE_EDGE = 1600;
     const MAX_IMAGE_BYTES = 900 * 1024;
     const NOTICE_MS = 3200;
@@ -42,7 +41,6 @@ window.__ModuleLoader__.load({
       'chars': 'characters',
       'images': 'images',
       'resize': 'Drag to resize',
-      'clearRight': 'Drag to clear the right panel',
       'dropHint': 'Drop images to add',
       'closePreview': 'Close preview',
       'imageError': 'Could not add that image'
@@ -60,92 +58,69 @@ window.__ModuleLoader__.load({
       'saving': '保存中',
       'chars': '字',
       'images': '张图片',
-      'resize': '拖动调整宽度',
-      'clearRight': '拖动让出右侧栏',
+      'resize': '拖动调整高度',
       'dropHint': '松开以添加图片',
       'closePreview': '关闭预览',
       'imageError': '这张图片添加失败'
     };
 
     const CSS = [
-      '@keyframes dsh-notepad-in{from{opacity:.25;transform:translateX(56px)}to{opacity:1;transform:none}}',
-      '.dsh-notepad{position:absolute;top:calc(var(--dsh-frame-chrome-top,0px) + 52px);right:0;bottom:0;z-index:1;',
-      'display:flex;align-items:stretch;box-sizing:border-box;min-height:0;',
-      'animation:dsh-notepad-in 220ms cubic-bezier(.32,.72,0,1)}',
-      '.dsh-notepad__tab{position:absolute;top:calc(var(--dsh-frame-chrome-top,0px) + 52px);right:0;bottom:0;width:44px;z-index:2;',
-      'display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 0;box-sizing:border-box;',
-      'border:none;border-left:.5px solid var(--dsw-alias-border-l3);cursor:pointer;',
-      'background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);',
-      'animation:dsh-notepad-in 220ms cubic-bezier(.32,.72,0,1)}',
-      '.dsh-notepad__tab:hover{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary)}',
-      '.dsh-notepad__tab:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary));outline-offset:-2px}',
-      '.dsh-notepad__body{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;box-sizing:border-box;',
+      '.dsh-notepad-dock{display:flex;flex-direction:column;box-sizing:border-box;width:100%;min-height:0;position:relative;',
       'color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);',
-      'border-left:.5px solid var(--dsw-alias-border-l3);position:relative;',
+      'border-top:.5px solid var(--dsw-alias-border-l3);',
       'font-family:var(--dsw-font-family,inherit);font-size:14px;line-height:22px;',
       '--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}',
-      '.dsh-notepad__handle{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;touch-action:none;z-index:2}',
-      '.dsh-notepad__handle:hover{background:var(--dsw-alias-interactive-bg-hover)}',
-      '.dsh-notepad__handle--right{left:auto;right:-4px}',
-      '.dsh-notepad__head{flex:none;height:40px;padding:0 8px 0 12px;display:flex;align-items:center;gap:8px;',
-      'border-bottom:.5px solid var(--dsw-alias-border-l3);-webkit-app-region:no-drag}',
-      '.dsh-notepad__headIcon{flex:none;display:flex;color:var(--dsw-alias-label-secondary)}',
-      '.dsh-notepad__title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}',
-      '.dsh-notepad__btn{flex:none;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;',
+      '.dsh-notepad-dock__grip{position:absolute;left:0;right:0;top:-3px;height:6px;z-index:3;cursor:row-resize;touch-action:none}',
+      '.dsh-notepad-dock__grip:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.dsh-notepad-dock__head{flex:none;height:38px;padding:0 10px 0 14px;display:flex;align-items:center;gap:8px;',
+      'cursor:pointer;-webkit-app-region:no-drag;box-sizing:border-box}',
+      '.dsh-notepad-dock__headIcon{flex:none;display:flex;color:var(--dsw-alias-label-secondary)}',
+      '.dsh-notepad-dock__title{flex:none;font-weight:500}',
+      '.dsh-notepad-dock__meta{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+      'text-align:right;padding-right:2px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}',
+      '.dsh-notepad-dock__meta--notice{color:var(--dsw-alias-state-error-primary)}',
+      '.dsh-notepad-dock__btn{flex:none;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;',
       'border:none;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;padding:0}',
-      '.dsh-notepad__btn:hover{background:var(--dsw-alias-interactive-bg-hover)}',
-      '.dsh-notepad__editor{flex:1;min-height:60px;width:100%;box-sizing:border-box;padding:10px 12px;border:none;outline:none;resize:none;',
+      '.dsh-notepad-dock__btn:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.dsh-notepad-dock__body{flex:1;min-height:0;display:flex;align-items:stretch;border-top:.5px solid var(--dsw-alias-border-l3)}',
+      '.dsh-notepad-dock__editor{flex:1;min-width:0;box-sizing:border-box;padding:8px 14px 12px;border:none;outline:none;resize:none;',
       'background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:22px}',
-      '.dsh-notepad__editor::placeholder{color:var(--dsw-alias-label-dimmed)}',
-      '.dsh-notepad__media{flex:none;max-height:40%;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));',
-      'gap:8px;padding:8px 12px;border-top:.5px solid var(--dsw-alias-border-l3)}',
-      '.dsh-notepad__thumb{position:relative;aspect-ratio:1;border-radius:var(--dsw-radius-sm);overflow:hidden;',
+      '.dsh-notepad-dock__editor::placeholder{color:var(--dsw-alias-label-dimmed)}',
+      '.dsh-notepad-dock__media{flex:none;width:178px;box-sizing:border-box;display:grid;grid-template-columns:repeat(2,1fr);',
+      'gap:6px;padding:8px;align-content:start;overflow:auto;border-left:.5px solid var(--dsw-alias-border-l3)}',
+      '.dsh-notepad-dock__thumb{position:relative;aspect-ratio:1;border-radius:var(--dsw-radius-sm);overflow:hidden;',
       'border:.5px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-layer-1)}',
-      '.dsh-notepad__thumbOpen{position:absolute;inset:0;width:100%;height:100%;padding:0;border:none;background:transparent;cursor:zoom-in;display:block}',
-      '.dsh-notepad__thumbOpen img{width:100%;height:100%;object-fit:cover;display:block}',
-      '.dsh-notepad__thumbRemove{position:absolute;top:3px;right:3px;width:20px;height:20px;padding:0;border:none;border-radius:50%;',
+      '.dsh-notepad-dock__thumbOpen{position:absolute;inset:0;width:100%;height:100%;padding:0;border:none;background:transparent;cursor:zoom-in;display:block}',
+      '.dsh-notepad-dock__thumbOpen img{width:100%;height:100%;object-fit:cover;display:block}',
+      '.dsh-notepad-dock__thumbRemove{position:absolute;top:3px;right:3px;width:20px;height:20px;padding:0;border:none;border-radius:50%;',
       'display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .12s ease;',
       'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-soft)}',
-      '.dsh-notepad__thumb:hover .dsh-notepad__thumbRemove,.dsh-notepad__thumbRemove:focus-visible{opacity:1}',
-      '.dsh-notepad__foot{flex:none;height:28px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;',
-      'border-top:.5px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}',
-      '.dsh-notepad__state{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.dsh-notepad__state--dirty{color:var(--dsw-alias-label-primary)}',
-      '.dsh-notepad__state--notice{color:var(--dsw-alias-state-error-primary)}',
-      '.dsh-notepad__count{flex:none}',
-      '.dsh-notepad__rail{flex:none;width:40px;padding:12px 0;display:flex;flex-direction:column;align-items:center;gap:10px;',
-      'border:none;border-left:.5px solid var(--dsw-alias-border-l3);cursor:pointer;box-sizing:border-box;',
-      'background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary)}',
-      '.dsh-notepad--offset .dsh-notepad__rail{border-right:.5px solid var(--dsw-alias-border-l3)}',
-      '.dsh-notepad__rail:hover{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary)}',
-      '.dsh-notepad__rail:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary));outline-offset:-2px}',
-      '.dsh-notepad__railIcon{display:flex}',
-      '.dsh-notepad__railText{writing-mode:vertical-rl;text-orientation:mixed;font-size:12px;line-height:18px;',
-      'letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-height:100%}',
-      '.dsh-notepad__drop{position:absolute;inset:4px;z-index:5;display:flex;flex-direction:column;gap:10px;align-items:center;',
+      '.dsh-notepad-dock__thumb:hover .dsh-notepad-dock__thumbRemove,.dsh-notepad-dock__thumbRemove:focus-visible{opacity:1}',
+      '.dsh-notepad-dock__drop{position:absolute;inset:4px;z-index:5;display:flex;flex-direction:column;gap:10px;align-items:center;',
       'justify-content:center;color:var(--dsw-alias-brand-text);font-size:13px;border-radius:var(--dsw-radius-md);',
       'border:1px dashed var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-2)}',
-      '.dsh-notepad__preview{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:16px;',
+      '.dsh-notepad-dock__preview{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:32px;',
       'cursor:zoom-out;background:var(--dsw-alias-bg-mask-1);backdrop-filter:var(--dsw-mask-blur)}',
-      '.dsh-notepad__preview img{max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--dsw-radius-sm);',
+      '.dsh-notepad-dock__preview img{max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--dsw-radius-sm);',
       'box-shadow:var(--dsw-elevation-prominent)}',
-      '.dsh-notepad__previewClose{position:absolute;top:8px;right:8px}',
-      '@media (prefers-reduced-motion:reduce){.dsh-notepad,.dsh-notepad__tab{animation:none}}'
+      '.dsh-notepad-dock__previewClose{position:absolute;top:12px;right:12px;width:32px;height:32px;display:inline-flex;',
+      'align-items:center;justify-content:center;border:none;border-radius:var(--dsw-radius-sm);cursor:pointer;padding:0;',
+      'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}',
+      '.dsh-notepad-dock__previewClose:hover{background:var(--dsw-alias-bg-layer-3)}'
     ].join('');
 
     function readStored() {
-      const fallback = { text: '', width: DEFAULT_WIDTH, collapsed: false, offset: 0 };
+      const fallback = { text: '', height: DEFAULT_HEIGHT, collapsed: false };
       try {
         const raw = globalThis.localStorage.getItem(STORAGE_KEY);
         if (!raw) return fallback;
         const parsed = JSON.parse(raw);
         return {
           text: typeof parsed.text === 'string' ? parsed.text : '',
-          width: typeof parsed.width === 'number' && parsed.width >= MIN_WIDTH && parsed.width <= MAX_WIDTH
-            ? parsed.width
-            : DEFAULT_WIDTH,
-          collapsed: parsed.collapsed === true,
-          offset: typeof parsed.offset === 'number' && parsed.offset >= 0 && parsed.offset <= MAX_OFFSET ? parsed.offset : 0
+          height: typeof parsed.height === 'number' && parsed.height >= MIN_HEIGHT && parsed.height <= MAX_HEIGHT
+            ? parsed.height
+            : DEFAULT_HEIGHT,
+          collapsed: parsed.collapsed === true
         };
       } catch (err) {
         return fallback;
@@ -325,11 +300,23 @@ window.__ModuleLoader__.load({
       })
     );
 
-    const CollapseIcon = (props) => h(
+    const ChevronUpIcon = (props) => h(
       'svg',
       Object.assign({}, iconProps, props),
       h('path', {
-        d: 'M6 3.4 10.6 8 6 12.6',
+        d: 'M3.4 10.2 8 5.6l4.6 4.6',
+        stroke: 'currentColor',
+        strokeWidth: 1.4,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round'
+      })
+    );
+
+    const ChevronDownIcon = (props) => h(
+      'svg',
+      Object.assign({}, iconProps, props),
+      h('path', {
+        d: 'M3.4 5.8 8 10.4l4.6-4.6',
         stroke: 'currentColor',
         strokeWidth: 1.4,
         strokeLinecap: 'round',
@@ -338,18 +325,16 @@ window.__ModuleLoader__.load({
     );
 
     /* ------------------------------------------------------------------ *
-     * Panel
+     * Dock
      * ------------------------------------------------------------------ */
 
-    function NotepadPanel(props) {
+    function NotepadDock(props) {
       const t = (key) => (typeof props.t === 'function' ? props.t(key) : (EN[key] !== undefined ? EN[key] : key));
 
       const [boot] = useState(readStored);
       const [text, setText] = useState(boot.text);
-      const [width, setWidth] = useState(boot.width);
+      const [height, setHeight] = useState(boot.height);
       const [collapsed, setCollapsed] = useState(boot.collapsed);
-      const [offset, setOffset] = useState(boot.offset || 0);
-      const [autoOffset, setAutoOffset] = useState(0);
       const [saved, setSaved] = useState(true);
       const [images, setImages] = useState([]);
       const [preview, setPreview] = useState(null);
@@ -369,14 +354,14 @@ window.__ModuleLoader__.load({
         setSaved(false);
         const timer = globalThis.setTimeout(() => {
           try {
-            globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify({ text, width, collapsed, offset }));
+            globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify({ text, height, collapsed }));
           } catch (err) {
             /* storage full or unavailable: keep the in-memory state */
           }
           setSaved(true);
         }, 250);
         return () => globalThis.clearTimeout(timer);
-      }, [text, width, collapsed, offset]);
+      }, [text, height, collapsed]);
 
       useEffect(() => {
         let alive = true;
@@ -387,45 +372,6 @@ window.__ModuleLoader__.load({
           .catch(() => {});
         return () => {
           alive = false;
-        };
-      }, []);
-
-      /* Keep clear of the built-in right column. The layout service exposes
-         actions only, so the column's own marker is measured instead; when it
-         is absent (older host, closed panel) the clearance degrades to zero
-         and the panel docks to the window edge as before. */
-      useEffect(() => {
-        if (typeof document === 'undefined' || typeof ResizeObserver !== 'function') return undefined;
-        let observer = null;
-        let column = null;
-        const apply = () => {
-          if (column === null) {
-            setAutoOffset(0);
-            return;
-          }
-          const frame = column.parentElement;
-          const fullscreen = frame !== null && frame.hasAttribute('data-rightbar-fullscreen');
-          const width = column.getBoundingClientRect().width;
-          const next = fullscreen || !Number.isFinite(width) ? 0 : Math.max(0, Math.round(width));
-          setAutoOffset((prev) => (prev === next ? prev : next));
-        };
-        const discover = () => {
-          const found = document.querySelector('[data-rightbar-col]');
-          if (found === null || found === column) return;
-          column = found;
-          if (observer !== null) observer.disconnect();
-          observer = new ResizeObserver(apply);
-          observer.observe(column);
-          apply();
-        };
-        discover();
-        const timer = globalThis.setInterval(() => {
-          discover();
-          if (column !== null) globalThis.clearInterval(timer);
-        }, 1000);
-        return () => {
-          globalThis.clearInterval(timer);
-          if (observer !== null) observer.disconnect();
         };
       }, []);
 
@@ -443,20 +389,6 @@ window.__ModuleLoader__.load({
         globalThis.addEventListener('keydown', onKey, true);
         return () => globalThis.removeEventListener('keydown', onKey, true);
       }, [preview]);
-
-      /* Esc collapses the drawer so the conversation can be read unobstructed,
-         but never steals the key while the note itself has focus. */
-      useEffect(() => {
-        if (collapsed || preview !== null) return undefined;
-        const onKey = (event) => {
-          if (event.key !== 'Escape' || event.defaultPrevented) return;
-          const active = document.activeElement;
-          if (active && active.tagName === 'TEXTAREA') return;
-          setCollapsed(true);
-        };
-        globalThis.addEventListener('keydown', onKey, true);
-        return () => globalThis.removeEventListener('keydown', onKey, true);
-      }, [collapsed, preview]);
 
       const addFiles = useCallback((fileList) => {
         const list = Array.from(fileList || []).filter(
@@ -493,17 +425,22 @@ window.__ModuleLoader__.load({
         deleteImage(id).catch(() => {});
       }, []);
 
-      const onClear = useCallback(() => setText(''), []);
+      const onClear = useCallback((event) => {
+        if (event) event.stopPropagation();
+        setText('');
+      }, []);
 
       const onResizeStart = useCallback((event) => {
         if (event.button !== 0) return;
         event.preventDefault();
-        const startX = event.clientX;
-        const startWidth = width;
-        const maxWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, globalThis.innerWidth - 160));
+        event.stopPropagation();
+        setCollapsed(false);
+        const startY = event.clientY;
+        const startHeight = height;
+        const maxHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, globalThis.innerHeight * 0.7));
         const onMove = (moveEvent) => {
-          const next = Math.min(maxWidth, Math.max(MIN_WIDTH, startWidth + (startX - moveEvent.clientX)));
-          setWidth(next);
+          const next = Math.min(maxHeight, Math.max(MIN_HEIGHT, startHeight + (startY - moveEvent.clientY)));
+          setHeight(next);
         };
         const onUp = () => {
           globalThis.removeEventListener('pointermove', onMove);
@@ -511,25 +448,7 @@ window.__ModuleLoader__.load({
         };
         globalThis.addEventListener('pointermove', onMove);
         globalThis.addEventListener('pointerup', onUp);
-      }, [width]);
-
-      const onOffsetStart = useCallback((event) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        const startX = event.clientX;
-        const startOffset = offset;
-        const maxOffset = Math.max(0, Math.min(MAX_OFFSET, globalThis.innerWidth - 200));
-        const onMove = (moveEvent) => {
-          const next = Math.min(maxOffset, Math.max(0, startOffset + (startX - moveEvent.clientX)));
-          setOffset(next);
-        };
-        const onUp = () => {
-          globalThis.removeEventListener('pointermove', onMove);
-          globalThis.removeEventListener('pointerup', onUp);
-        };
-        globalThis.addEventListener('pointermove', onMove);
-        globalThis.addEventListener('pointerup', onUp);
-      }, [offset]);
+      }, [height]);
 
       const onDragEnter = (event) => {
         if (!event.dataTransfer) return;
@@ -553,6 +472,7 @@ window.__ModuleLoader__.load({
         event.preventDefault();
         dragDepth.current = 0;
         setDragging(false);
+        setCollapsed(false);
         addFiles(event.dataTransfer.files);
       };
 
@@ -572,166 +492,135 @@ window.__ModuleLoader__.load({
         addFiles(files);
       };
 
-      const shown = notice ? t(notice) : (saved ? t('saved') : t('saving'));
       const previewImage = preview === null ? null : images.filter((image) => image.id === preview)[0] || null;
+      const status = notice ? t(notice) : (saved ? t('saved') : t('saving'));
+      const counter = text.length + ' ' + t('chars')
+        + (images.length > 0 ? ' · ' + images.length + ' ' + t('images') : '');
 
-      /* Clamp to the live viewport so a value saved on a wider window can never
-         park the panel or its tab outside the frame. */
-      const viewport = typeof globalThis.innerWidth === 'number' && globalThis.innerWidth > 0
-        ? globalThis.innerWidth
-        : 1280;
-      const panelWidth = Math.min(
-        Math.max(width, MIN_WIDTH),
-        Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, viewport - 160))
-      );
-      const maxOffset = Math.max(0, viewport - panelWidth - RAIL_WIDTH - 8);
-      const panelOffset = Math.min(Math.max(offset + autoOffset, 0), maxOffset);
-
-      if (collapsed) {
-        return h(
-          'button',
-          {
-            type: 'button',
-            className: 'dsh-notepad__tab',
-            style: { right: panelOffset + 'px' },
-            onClick: () => setCollapsed(false),
-            onKeyDown: (event) => {
-              if (event.key === 'Enter' || event.key === ' ') setCollapsed(false);
-            },
-            title: t('expand'),
-            'aria-label': t('expand'),
-            'aria-expanded': false
-          },
-          h('span', { className: 'dsh-notepad__railIcon' }, h(NoteIcon)),
-          h('span', { className: 'dsh-notepad__railText' }, t('title'))
-        );
-      }
+      const heightLimit = typeof globalThis.innerHeight === 'number' && globalThis.innerHeight > 0
+        ? Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, globalThis.innerHeight * 0.7))
+        : MAX_HEIGHT;
+      const dockHeight = collapsed ? BAR_HEIGHT : Math.min(Math.max(height, MIN_HEIGHT), heightLimit);
 
       return h(
         'div',
         {
-          className: 'dsh-notepad' + (panelOffset > 0 ? ' dsh-notepad--offset' : ''),
-          style: { width: (panelWidth + RAIL_WIDTH) + 'px', right: panelOffset + 'px' },
+          className: 'dsh-notepad-dock',
+          style: { height: dockHeight + 'px' },
           onDragEnter,
           onDragOver,
           onDragLeave,
           onDrop,
           onPaste
         },
-        h(
-          'div',
-          { className: 'dsh-notepad__body' },
-          h('div', {
-            className: 'dsh-notepad__handle',
-            onPointerDown: onResizeStart,
-            title: t('resize'),
-            'aria-hidden': 'true'
-          }),
-          h(
-            'header',
-            { className: 'dsh-notepad__head' },
-            h(NoteIcon, { className: 'dsh-notepad__headIcon' }),
-            h('span', { className: 'dsh-notepad__title' }, t('title')),
-            h(
-              'button',
-              {
-                type: 'button',
-                className: 'dsh-notepad__btn',
-                onClick: () => {
-                  if (fileRef.current) fileRef.current.click();
-                },
-                title: t('addImage'),
-                'aria-label': t('addImage')
-              },
-              h(ImagePlusIcon)
-            ),
-            h(
-              'button',
-              {
-                type: 'button',
-                className: 'dsh-notepad__btn',
-                onClick: onClear,
-                title: t('clear'),
-                'aria-label': t('clear')
-              },
-              h(ClearIcon)
-            )
-          ),
-          h('textarea', {
-            className: 'dsh-notepad__editor',
-            value: text,
-            placeholder: t('placeholder'),
-            spellCheck: false,
-            onChange: (event) => setText(event.target.value)
-          }),
-          images.length > 0
-            ? h(
-              'div',
-              { className: 'dsh-notepad__media' },
-              images.map((image) => h(
-                'div',
-                { key: image.id, className: 'dsh-notepad__thumb' },
-                h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'dsh-notepad__thumbOpen',
-                    onClick: () => setPreview(image.id),
-                    title: image.name
-                  },
-                  urls[image.id] ? h('img', { src: urls[image.id], alt: image.name, draggable: false }) : null
-                ),
-                h(
-                  'button',
-                  {
-                    type: 'button',
-                    className: 'dsh-notepad__thumbRemove',
-                    onClick: () => removeImage(image.id),
-                    title: t('removeImage'),
-                    'aria-label': t('removeImage')
-                  },
-                  h(CloseIcon, { width: 12, height: 12, viewBox: '0 0 16 16' })
-                )
-              ))
-            )
-            : null,
-          h(
-            'footer',
-            { className: 'dsh-notepad__foot' },
-            h(
-              'span',
-              {
-                className: 'dsh-notepad__state'
-                  + (notice ? ' dsh-notepad__state--notice' : '')
-                  + (saved ? '' : ' dsh-notepad__state--dirty')
-              },
-              shown
-            ),
-            h(
-              'span',
-              { className: 'dsh-notepad__count' },
-              text.length + ' ' + t('chars') + (images.length > 0 ? ' · ' + images.length + ' ' + t('images') : '')
-            )
-          )
-        ),
-        h(
-          'button',
-          {
-            type: 'button',
-            className: 'dsh-notepad__rail',
-            onClick: () => setCollapsed(true),
-            title: t('collapse'),
-            'aria-label': t('collapse'),
-            'aria-expanded': true
-          },
-          h('span', { className: 'dsh-notepad__railIcon' }, h(CollapseIcon))
-        ),
         h('div', {
-          className: 'dsh-notepad__handle dsh-notepad__handle--right',
-          onPointerDown: onOffsetStart,
-          title: t('clearRight'),
+          className: 'dsh-notepad-dock__grip',
+          onPointerDown: onResizeStart,
+          title: t('resize'),
           'aria-hidden': 'true'
         }),
+        h(
+          'div',
+          {
+            className: 'dsh-notepad-dock__head',
+            onClick: () => setCollapsed((prev) => !prev),
+            title: collapsed ? t('expand') : t('collapse')
+          },
+          h(NoteIcon, { className: 'dsh-notepad-dock__headIcon' }),
+          h('span', { className: 'dsh-notepad-dock__title' }, t('title')),
+          h(
+            'span',
+            {
+              className: 'dsh-notepad-dock__meta'
+                + (notice ? ' dsh-notepad-dock__meta--notice' : '')
+            },
+            status + ' · ' + counter
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh-notepad-dock__btn',
+              onClick: (event) => {
+                event.stopPropagation();
+                if (fileRef.current) fileRef.current.click();
+              },
+              title: t('addImage'),
+              'aria-label': t('addImage')
+            },
+            h(ImagePlusIcon)
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh-notepad-dock__btn',
+              onClick: onClear,
+              title: t('clear'),
+              'aria-label': t('clear')
+            },
+            h(ClearIcon)
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh-notepad-dock__btn',
+              onClick: (event) => {
+                event.stopPropagation();
+                setCollapsed((prev) => !prev);
+              },
+              title: collapsed ? t('expand') : t('collapse'),
+              'aria-label': collapsed ? t('expand') : t('collapse'),
+              'aria-expanded': !collapsed
+            },
+            collapsed ? h(ChevronUpIcon) : h(ChevronDownIcon)
+          )
+        ),
+        collapsed
+          ? null
+          : h(
+            'div',
+            { className: 'dsh-notepad-dock__body' },
+            h('textarea', {
+              className: 'dsh-notepad-dock__editor',
+              value: text,
+              placeholder: t('placeholder'),
+              spellCheck: false,
+              onChange: (event) => setText(event.target.value)
+            }),
+            images.length > 0
+              ? h(
+                'div',
+                { className: 'dsh-notepad-dock__media' },
+                images.map((image) => h(
+                  'div',
+                  { key: image.id, className: 'dsh-notepad-dock__thumb' },
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dsh-notepad-dock__thumbOpen',
+                      onClick: () => setPreview(image.id),
+                      title: image.name
+                    },
+                    urls[image.id] ? h('img', { src: urls[image.id], alt: image.name, draggable: false }) : null
+                  ),
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'dsh-notepad-dock__thumbRemove',
+                      onClick: () => removeImage(image.id),
+                      title: t('removeImage'),
+                      'aria-label': t('removeImage')
+                    },
+                    h(CloseIcon, { width: 12, height: 12 })
+                  )
+                ))
+              )
+              : null
+          ),
         h('input', {
           ref: fileRef,
           type: 'file',
@@ -743,11 +632,11 @@ window.__ModuleLoader__.load({
             event.target.value = '';
           }
         }),
-        dragging
+        dragging && !collapsed
           ? h(
             'div',
-            { className: 'dsh-notepad__drop' },
-            h(ImagePlusIcon, { width: 22, height: 22, viewBox: '0 0 16 16' }),
+            { className: 'dsh-notepad-dock__drop' },
+            h(ImagePlusIcon, { width: 22, height: 22 }),
             h('span', null, t('dropHint'))
           )
           : null,
@@ -755,7 +644,7 @@ window.__ModuleLoader__.load({
           ? h(
             'div',
             {
-              className: 'dsh-notepad__preview',
+              className: 'dsh-notepad-dock__preview',
               onClick: () => setPreview(null),
               role: 'presentation'
             },
@@ -766,7 +655,7 @@ window.__ModuleLoader__.load({
               'button',
               {
                 type: 'button',
-                className: 'dsh-notepad__btn dsh-notepad__previewClose',
+                className: 'dsh-notepad-dock__previewClose',
                 onClick: (event) => {
                   event.stopPropagation();
                   setPreview(null);
@@ -812,12 +701,11 @@ window.__ModuleLoader__.load({
           'notepad: locale dictionaries'
         );
 
-        ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-          name: 'shell.overlay',
+        ctx.slots.inject('shell.bottom', () => ctx.slots.register({
+          name: 'shell.bottom',
           id: 'dsh-notepad',
-          order: 100,
           locale: NS
-        }, NotepadPanel));
+        }, NotepadDock));
       }
     };
   }
