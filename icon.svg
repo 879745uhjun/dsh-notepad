@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none">
+  <defs>
+    <linearGradient id="dshNotepadSheet" x1="8" y1="7" x2="27" y2="29" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7CB7FF"/>
+      <stop offset="1" stop-color="#145AF3"/>
+    </linearGradient>
+  </defs>
+  <rect x="8.5" y="6.5" width="19" height="23" rx="3.5" stroke="url(#dshNotepadSheet)" stroke-width="2.5"/>
+  <path d="M13.2 7.2v21.6" stroke="#658EFF" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M17.4 14.6h6.1M17.4 19.4h4.2" stroke="#41E1AC" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

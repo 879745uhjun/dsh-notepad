@@ -1,0 +1,3 @@
+- insert:
+    - id: dsh-notepad
+      name: '@local/dsh-notepad'
