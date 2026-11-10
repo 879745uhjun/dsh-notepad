@@ -68,9 +68,17 @@ window.__ModuleLoader__.load({
     };
 
     const CSS = [
+      '@keyframes dsh-notepad-in{from{opacity:.25;transform:translateX(56px)}to{opacity:1;transform:none}}',
       '.dsh-notepad{position:absolute;top:calc(var(--dsh-frame-chrome-top,0px) + 52px);right:0;bottom:0;z-index:1;',
       'display:flex;align-items:stretch;box-sizing:border-box;min-height:0;',
-      'transition:transform 240ms cubic-bezier(.32,.72,0,1)}',
+      'animation:dsh-notepad-in 220ms cubic-bezier(.32,.72,0,1)}',
+      '.dsh-notepad__tab{position:absolute;top:calc(var(--dsh-frame-chrome-top,0px) + 52px);right:0;bottom:0;width:44px;z-index:2;',
+      'display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 0;box-sizing:border-box;',
+      'border:none;border-left:.5px solid var(--dsw-alias-border-l3);cursor:pointer;',
+      'background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-elevation-panel);color:var(--dsw-alias-label-secondary);',
+      'animation:dsh-notepad-in 220ms cubic-bezier(.32,.72,0,1)}',
+      '.dsh-notepad__tab:hover{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary)}',
+      '.dsh-notepad__tab:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary));outline-offset:-2px}',
       '.dsh-notepad__body{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;box-sizing:border-box;',
       'color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);',
       'border-left:.5px solid var(--dsw-alias-border-l3);box-shadow:var(--dsw-elevation-panel);position:relative;',
@@ -110,7 +118,8 @@ window.__ModuleLoader__.load({
       'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}',
       '.dsh-notepad--collapsed .dsh-notepad__rail{box-shadow:var(--dsw-elevation-panel)}',
       '.dsh-notepad--offset .dsh-notepad__rail{border-right:.5px solid var(--dsw-alias-border-l3);box-shadow:var(--dsw-elevation-panel)}',
-      '.dsh-notepad__rail:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+      '.dsh-notepad__rail:hover{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary)}',
+      '.dsh-notepad__rail:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary));outline-offset:-2px}',
       '.dsh-notepad__railIcon{display:flex}',
       '.dsh-notepad__railText{writing-mode:vertical-rl;text-orientation:mixed;font-size:12px;line-height:18px;',
       'letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-height:100%}',
@@ -122,7 +131,7 @@ window.__ModuleLoader__.load({
       '.dsh-notepad__preview img{max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--dsw-radius-sm);',
       'box-shadow:var(--dsw-elevation-prominent)}',
       '.dsh-notepad__previewClose{position:absolute;top:8px;right:8px}',
-      '@media (prefers-reduced-motion:reduce){.dsh-notepad{transition:none}}'
+      '@media (prefers-reduced-motion:reduce){.dsh-notepad,.dsh-notepad__tab{animation:none}}'
     ].join('');
 
     function readStored() {
@@ -347,7 +356,6 @@ window.__ModuleLoader__.load({
       const [dragging, setDragging] = useState(false);
       const [notice, setNotice] = useState('');
 
-      const bodyRef = useRef(null);
       const fileRef = useRef(null);
       const dragDepth = useRef(0);
       const firstSave = useRef(true);
@@ -410,17 +418,6 @@ window.__ModuleLoader__.load({
         globalThis.addEventListener('keydown', onKey, true);
         return () => globalThis.removeEventListener('keydown', onKey, true);
       }, [collapsed, preview]);
-
-      useEffect(() => {
-        const node = bodyRef.current;
-        if (!node) return;
-        try {
-          node.inert = collapsed;
-        } catch (err) {
-          /* older engines: collapsing still hides the body visually */
-        }
-        if (collapsed && node.contains(document.activeElement)) document.activeElement.blur();
-      }, [collapsed]);
 
       const addFiles = useCallback((fileList) => {
         const list = Array.from(fileList || []).filter(
@@ -539,15 +536,43 @@ window.__ModuleLoader__.load({
       const shown = notice ? t(notice) : (saved ? t('saved') : t('saving'));
       const previewImage = preview === null ? null : images.filter((image) => image.id === preview)[0] || null;
 
+      /* Clamp to the live viewport so a value saved on a wider window can never
+         park the panel or its tab outside the frame. */
+      const viewport = typeof globalThis.innerWidth === 'number' && globalThis.innerWidth > 0
+        ? globalThis.innerWidth
+        : 1280;
+      const panelWidth = Math.min(
+        Math.max(width, MIN_WIDTH),
+        Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, viewport - 160))
+      );
+      const maxOffset = Math.max(0, viewport - panelWidth - RAIL_WIDTH - 8);
+      const panelOffset = Math.min(Math.max(offset, 0), maxOffset);
+
+      if (collapsed) {
+        return h(
+          'button',
+          {
+            type: 'button',
+            className: 'dsh-notepad__tab',
+            style: { right: panelOffset + 'px' },
+            onClick: () => setCollapsed(false),
+            onKeyDown: (event) => {
+              if (event.key === 'Enter' || event.key === ' ') setCollapsed(false);
+            },
+            title: t('expand'),
+            'aria-label': t('expand'),
+            'aria-expanded': false
+          },
+          h('span', { className: 'dsh-notepad__railIcon' }, h(NoteIcon)),
+          h('span', { className: 'dsh-notepad__railText' }, t('title'))
+        );
+      }
+
       return h(
         'div',
         {
-          className: 'dsh-notepad' + (collapsed ? ' dsh-notepad--collapsed' : '') + (offset > 0 ? ' dsh-notepad--offset' : ''),
-          style: {
-            width: (width + RAIL_WIDTH) + 'px',
-            right: offset + 'px',
-            transform: 'translateX(' + (collapsed ? width : 0) + 'px)'
-          },
+          className: 'dsh-notepad' + (panelOffset > 0 ? ' dsh-notepad--offset' : ''),
+          style: { width: (panelWidth + RAIL_WIDTH) + 'px', right: panelOffset + 'px' },
           onDragEnter,
           onDragOver,
           onDragLeave,
@@ -556,7 +581,7 @@ window.__ModuleLoader__.load({
         },
         h(
           'div',
-          { className: 'dsh-notepad__body', ref: bodyRef },
+          { className: 'dsh-notepad__body' },
           h('div', {
             className: 'dsh-notepad__handle',
             onPointerDown: onResizeStart,
@@ -655,15 +680,12 @@ window.__ModuleLoader__.load({
           {
             type: 'button',
             className: 'dsh-notepad__rail',
-            onClick: () => setCollapsed((prev) => !prev),
-            title: collapsed ? t('expand') : t('collapse'),
-            'aria-label': collapsed ? t('expand') : t('collapse'),
-            'aria-expanded': !collapsed
+            onClick: () => setCollapsed(true),
+            title: t('collapse'),
+            'aria-label': t('collapse'),
+            'aria-expanded': true
           },
-          collapsed
-            ? h('span', { className: 'dsh-notepad__railIcon' }, h(NoteIcon))
-            : h('span', { className: 'dsh-notepad__railIcon' }, h(CollapseIcon)),
-          collapsed ? h('span', { className: 'dsh-notepad__railText' }, t('title')) : null
+          h('span', { className: 'dsh-notepad__railIcon' }, h(CollapseIcon))
         ),
         h('div', {
           className: 'dsh-notepad__handle dsh-notepad__handle--right',
