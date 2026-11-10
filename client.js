@@ -75,13 +75,13 @@ window.__ModuleLoader__.load({
       '.dsh-notepad__tab{position:absolute;top:calc(var(--dsh-frame-chrome-top,0px) + 52px);right:0;bottom:0;width:44px;z-index:2;',
       'display:flex;flex-direction:column;align-items:center;gap:10px;padding:12px 0;box-sizing:border-box;',
       'border:none;border-left:.5px solid var(--dsw-alias-border-l3);cursor:pointer;',
-      'background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-elevation-panel);color:var(--dsw-alias-label-secondary);',
+      'background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary);',
       'animation:dsh-notepad-in 220ms cubic-bezier(.32,.72,0,1)}',
       '.dsh-notepad__tab:hover{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary)}',
       '.dsh-notepad__tab:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary));outline-offset:-2px}',
       '.dsh-notepad__body{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;box-sizing:border-box;',
-      'color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);',
-      'border-left:.5px solid var(--dsw-alias-border-l3);box-shadow:var(--dsw-elevation-panel);position:relative;',
+      'color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);',
+      'border-left:.5px solid var(--dsw-alias-border-l3);position:relative;',
       'font-family:var(--dsw-font-family,inherit);font-size:14px;line-height:22px;',
       '--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}',
       '.dsh-notepad__handle{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;touch-action:none;z-index:2}',
@@ -115,9 +115,8 @@ window.__ModuleLoader__.load({
       '.dsh-notepad__count{flex:none}',
       '.dsh-notepad__rail{flex:none;width:40px;padding:12px 0;display:flex;flex-direction:column;align-items:center;gap:10px;',
       'border:none;border-left:.5px solid var(--dsw-alias-border-l3);cursor:pointer;box-sizing:border-box;',
-      'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}',
-      '.dsh-notepad--collapsed .dsh-notepad__rail{box-shadow:var(--dsw-elevation-panel)}',
-      '.dsh-notepad--offset .dsh-notepad__rail{border-right:.5px solid var(--dsw-alias-border-l3);box-shadow:var(--dsw-elevation-panel)}',
+      'background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-secondary)}',
+      '.dsh-notepad--offset .dsh-notepad__rail{border-right:.5px solid var(--dsw-alias-border-l3)}',
       '.dsh-notepad__rail:hover{background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary)}',
       '.dsh-notepad__rail:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary));outline-offset:-2px}',
       '.dsh-notepad__railIcon{display:flex}',
@@ -350,6 +349,7 @@ window.__ModuleLoader__.load({
       const [width, setWidth] = useState(boot.width);
       const [collapsed, setCollapsed] = useState(boot.collapsed);
       const [offset, setOffset] = useState(boot.offset || 0);
+      const [autoOffset, setAutoOffset] = useState(0);
       const [saved, setSaved] = useState(true);
       const [images, setImages] = useState([]);
       const [preview, setPreview] = useState(null);
@@ -387,6 +387,45 @@ window.__ModuleLoader__.load({
           .catch(() => {});
         return () => {
           alive = false;
+        };
+      }, []);
+
+      /* Keep clear of the built-in right column. The layout service exposes
+         actions only, so the column's own marker is measured instead; when it
+         is absent (older host, closed panel) the clearance degrades to zero
+         and the panel docks to the window edge as before. */
+      useEffect(() => {
+        if (typeof document === 'undefined' || typeof ResizeObserver !== 'function') return undefined;
+        let observer = null;
+        let column = null;
+        const apply = () => {
+          if (column === null) {
+            setAutoOffset(0);
+            return;
+          }
+          const frame = column.parentElement;
+          const fullscreen = frame !== null && frame.hasAttribute('data-rightbar-fullscreen');
+          const width = column.getBoundingClientRect().width;
+          const next = fullscreen || !Number.isFinite(width) ? 0 : Math.max(0, Math.round(width));
+          setAutoOffset((prev) => (prev === next ? prev : next));
+        };
+        const discover = () => {
+          const found = document.querySelector('[data-rightbar-col]');
+          if (found === null || found === column) return;
+          column = found;
+          if (observer !== null) observer.disconnect();
+          observer = new ResizeObserver(apply);
+          observer.observe(column);
+          apply();
+        };
+        discover();
+        const timer = globalThis.setInterval(() => {
+          discover();
+          if (column !== null) globalThis.clearInterval(timer);
+        }, 1000);
+        return () => {
+          globalThis.clearInterval(timer);
+          if (observer !== null) observer.disconnect();
         };
       }, []);
 
@@ -546,7 +585,7 @@ window.__ModuleLoader__.load({
         Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, viewport - 160))
       );
       const maxOffset = Math.max(0, viewport - panelWidth - RAIL_WIDTH - 8);
-      const panelOffset = Math.min(Math.max(offset, 0), maxOffset);
+      const panelOffset = Math.min(Math.max(offset + autoOffset, 0), maxOffset);
 
       if (collapsed) {
         return h(
