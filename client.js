@@ -28,6 +28,9 @@ window.__ModuleLoader__.load({
     const DEFAULT_W = 380;
     const DEFAULT_H = 300;
     const SNAP = 64;
+    const PEEK = 32;
+    const PEEK_LENGTH = 96;
+    const PEEK_TRIGGER = 40;
     const TAB = 44;
     const MAX_IMAGE_EDGE = 1600;
     const MAX_IMAGE_BYTES = 900 * 1024;
@@ -47,6 +50,8 @@ window.__ModuleLoader__.load({
       'images': 'images',
       'move': 'Drag to move — release near an edge to snap',
       'resize': 'Drag to resize',
+      'peek': 'Drag it past the window edge to tuck it away, click to bring it back',
+      'peekRestore': 'Click to bring the notepad back',
       'dropHint': 'Drop images to add',
       'closePreview': 'Close preview',
       'imageError': 'Could not add that image'
@@ -66,6 +71,8 @@ window.__ModuleLoader__.load({
       'images': '张图片',
       'move': '拖动移动，靠近四边自动吸附',
       'resize': '拖动调整大小',
+      'peek': '拖出窗口外可收起，点把手拉回来',
+      'peekRestore': '点击把记事本拉回来',
       'dropHint': '松开以添加图片',
       'closePreview': '关闭预览',
       'imageError': '这张图片添加失败'
@@ -128,7 +135,15 @@ window.__ModuleLoader__.load({
       'background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-elevation-panel);color:var(--dsw-alias-label-secondary);',
       'cursor:grab;touch-action:none;user-select:none}',
       '.dsh-notepad-tab:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-3)}',
-      '.dsh-notepad-snap{position:absolute;z-index:3;background:var(--dsw-alias-brand-primary);pointer-events:none;border-radius:2px}'
+      '.dsh-notepad-snap{position:absolute;z-index:3;background:var(--dsw-alias-brand-primary);pointer-events:none;border-radius:2px}',
+      '.dsh-notepad-peek{position:absolute;z-index:2;display:flex;align-items:center;justify-content:center;box-sizing:border-box;',
+      'pointer-events:auto;border:.5px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-layer-2);',
+      'box-shadow:var(--dsw-elevation-panel);color:var(--dsw-alias-label-secondary);cursor:pointer}',
+      '.dsh-notepad-peek:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-3)}',
+      '.dsh-notepad-peek--left{border-left:none;border-radius:0 var(--dsw-radius-md) var(--dsw-radius-md) 0}',
+      '.dsh-notepad-peek--right{border-right:none;border-radius:var(--dsw-radius-md) 0 0 var(--dsw-radius-md)}',
+      '.dsh-notepad-peek--top{border-top:none;border-radius:0 0 var(--dsw-radius-md) var(--dsw-radius-md)}',
+      '.dsh-notepad-peek--bottom{border-bottom:none;border-radius:var(--dsw-radius-md) var(--dsw-radius-md) 0 0}'
     ].join('');
 
     function chromeTop() {
@@ -148,7 +163,8 @@ window.__ModuleLoader__.load({
         height: DEFAULT_H,
         x: null,
         y: null,
-        collapsed: false
+        collapsed: false,
+        peek: null
       };
       try {
         const raw = globalThis.localStorage.getItem(STORAGE_KEY);
@@ -163,7 +179,10 @@ window.__ModuleLoader__.load({
           height: num(parsed.height, MIN_H, MAX_H, DEFAULT_H),
           x: typeof parsed.x === 'number' ? parsed.x : null,
           y: typeof parsed.y === 'number' ? parsed.y : null,
-          collapsed: parsed.collapsed === true
+          collapsed: parsed.collapsed === true,
+          peek: parsed.peek === 'left' || parsed.peek === 'right' || parsed.peek === 'top' || parsed.peek === 'bottom'
+            ? parsed.peek
+            : null
         };
       } catch (err) {
         return fallback;
@@ -219,6 +238,24 @@ window.__ModuleLoader__.load({
       if (edge === 'right') return { x: Math.max(0, box.w - w), y };
       if (edge === 'top') return { x, y: box.top };
       return { x, y: Math.max(box.top, box.h - hgt) };
+    }
+
+    /** Handle geometry for a card tucked outside the window: PEEK px stays visible. */
+    function peekHandleStyle(edge, pos, box) {
+      if (edge === 'left' || edge === 'right') {
+        return {
+          left: (edge === 'left' ? 0 : box.w - PEEK) + 'px',
+          top: clampAxis(pos.y, box.top + 8, box.h - PEEK_LENGTH - 8) + 'px',
+          width: PEEK + 'px',
+          height: PEEK_LENGTH + 'px'
+        };
+      }
+      return {
+        left: clampAxis(pos.x, 8, box.w - PEEK_LENGTH - 8) + 'px',
+        top: (edge === 'top' ? box.top : box.h - PEEK) + 'px',
+        width: PEEK_LENGTH + 'px',
+        height: PEEK + 'px'
+      };
     }
 
     function snapRect(edge, x, y, w, hgt, box) {
@@ -435,6 +472,7 @@ window.__ModuleLoader__.load({
         return { x: fixed.x, y: fixed.y };
       });
       const [collapsed, setCollapsed] = useState(boot.collapsed);
+      const [peek, setPeek] = useState(boot.peek);
       const [saved, setSaved] = useState(true);
       const [images, setImages] = useState([]);
       const [preview, setPreview] = useState(null);
@@ -469,7 +507,8 @@ window.__ModuleLoader__.load({
               height,
               x: pos.x,
               y: pos.y,
-              collapsed
+              collapsed,
+              peek
             }));
           } catch (err) {
             /* storage full or unavailable: keep the in-memory state */
@@ -477,7 +516,7 @@ window.__ModuleLoader__.load({
           setSaved(true);
         }, 250);
         return () => globalThis.clearTimeout(timer);
-      }, [text, width, height, pos.x, pos.y, collapsed]);
+      }, [text, width, height, pos.x, pos.y, collapsed, peek]);
 
       useEffect(() => {
         let alive = true;
@@ -583,17 +622,54 @@ window.__ModuleLoader__.load({
 
       const dragOrigin = useRef({ x: 0, y: 0 });
 
+      /* The card may be dragged past an edge; PEEK pixels always stay visible so
+         the release can re-anchor it as a slim handle. */
       const dragBox = useCallback((dx, dy, w, hgt) => {
         const box = bounds();
         const raw = { x: dragOrigin.current.x + dx, y: dragOrigin.current.y + dy };
         return {
           pos: {
-            x: clampAxis(raw.x, 8, box.w - w - 8),
-            y: clampAxis(raw.y, box.top + 8, box.h - hgt - 8)
+            x: clampAxis(raw.x, -(w - PEEK), box.w - PEEK),
+            y: clampAxis(raw.y, box.top - (hgt - PEEK), box.h - PEEK)
           },
           edge: nearestEdge(raw.x, raw.y, w, hgt, box)
         };
       }, []);
+
+      /* Release rules: far out past an edge -> tuck into a handle there; otherwise
+         the usual flush snap; otherwise keep the clamped free position. */
+      const settle = useCallback((w, hgt) => {
+        const box = bounds();
+        const p = livePos.current;
+        const overflow = {
+          left: -p.x,
+          right: (p.x + w) - box.w,
+          top: box.top - p.y,
+          bottom: (p.y + hgt) - box.h
+        };
+        let target = null;
+        let deepest = PEEK_TRIGGER;
+        for (const key of ['left', 'right', 'top', 'bottom']) {
+          if (overflow[key] > deepest) {
+            deepest = overflow[key];
+            target = key;
+          }
+        }
+        setSnapEdge(null);
+        if (target !== null) {
+          setPeek(target);
+          return;
+        }
+        const edge = nearestEdge(p.x, p.y, w, hgt, box);
+        applyPos(edge === null ? fitPos(p.x, p.y, w, hgt, box) : snapTo(edge, p.x, p.y, w, hgt, box));
+      }, [applyPos]);
+
+      const restoreFromPeek = useCallback(() => {
+        setPeek(null);
+        const box = bounds();
+        const size = fitSize(liveSize.current.w, liveSize.current.h, box);
+        applyPos(fitPos(livePos.current.x, livePos.current.y, size.w, size.h, box));
+      }, [applyPos]);
 
       const onMoveCard = useCallback((event) => {
         dragOrigin.current = { x: livePos.current.x, y: livePos.current.y };
@@ -601,14 +677,8 @@ window.__ModuleLoader__.load({
           const next = dragBox(dx, dy, width, height);
           applyPos(next.pos);
           setSnapEdge(next.edge);
-        }, () => {
-          const box = bounds();
-          const target = nearestEdge(livePos.current.x, livePos.current.y, width, height, box);
-          setSnapEdge(null);
-          if (target === null) return;
-          applyPos(snapTo(target, livePos.current.x, livePos.current.y, width, height, box));
-        });
-      }, [applyPos, dragBox, height, startDrag, width]);
+        }, () => settle(width, height));
+      }, [dragBox, height, settle, startDrag, width]);
 
       const onMoveTab = useCallback((event) => {
         dragOrigin.current = { x: livePos.current.x, y: livePos.current.y };
@@ -616,14 +686,8 @@ window.__ModuleLoader__.load({
           const next = dragBox(dx, dy, TAB, TAB);
           applyPos(next.pos);
           setSnapEdge(next.edge);
-        }, () => {
-          const box = bounds();
-          const target = nearestEdge(livePos.current.x, livePos.current.y, TAB, TAB, box);
-          setSnapEdge(null);
-          if (target === null) return;
-          applyPos(snapTo(target, livePos.current.x, livePos.current.y, TAB, TAB, box));
-        });
-      }, [applyPos, dragBox, startDrag]);
+        }, () => settle(TAB, TAB));
+      }, [dragBox, settle, startDrag]);
 
       const onResizeCard = useCallback((event) => {
         const origin = { w: liveSize.current.w, h: liveSize.current.h };
@@ -721,12 +785,30 @@ window.__ModuleLoader__.load({
       const cardW = collapsed ? TAB : width;
       const cardH = collapsed ? TAB : height;
       const indicator = snapEdge === null ? null : snapRect(snapEdge, pos.x, pos.y, cardW, cardH, box);
+      const peekStyle = peek === null ? null : peekHandleStyle(peek, pos, box);
 
       return h(
         React.Fragment,
         null,
         indicator === null ? null : h('div', { className: 'dsh-notepad-snap', style: indicator }),
-        collapsed
+        peek !== null
+          ? h(
+            'div',
+            {
+              className: 'dsh-notepad-peek dsh-notepad-peek--' + peek,
+              style: peekStyle,
+              onClick: restoreFromPeek,
+              role: 'button',
+              tabIndex: 0,
+              onKeyDown: (event) => {
+                if (event.key === 'Enter' || event.key === ' ') restoreFromPeek();
+              },
+              title: t('peekRestore'),
+              'aria-label': t('peekRestore')
+            },
+            h(NoteIcon, { width: 14, height: 14 })
+          )
+          : collapsed
           ? h(
             'div',
             {
