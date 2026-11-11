@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Notepad",
-    "description": "A floating notepad that snaps to any edge of the interface for quick notes and images, saved automatically."
+    "description": "A notepad that either floats and snaps to any edge or docks into the bottom row, switchable at runtime with shared content."
   }
 }

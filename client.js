@@ -1,13 +1,17 @@
 /**
  * Client half of the notepad plugin.
  *
- * A floating notepad card on the frame-wide overlay layer. Drag its header to
- * move it; releasing within 64px of any of the four edges snaps it flush against
- * that edge, with an accent line previewing the target edge during the drag.
- * Drag the bottom-right corner to resize. The header collapses it to a small tab
- * that can itself be dragged to another edge and clicked to expand again.
- * Text, geometry and collapse state persist in localStorage; images persist in
- * IndexedDB. Every visible string comes from the Client locale service.
+ * One notepad, two layouts, switchable at runtime from either surface:
+ *  - float: a card on the frame-wide overlay layer. Drag the header to move it;
+ *    releasing near an edge snaps it flush (an accent line previews the edge),
+ *    releasing past an edge tucks it into a slim handle. Every edge resizes.
+ *  - dock: a real layout row in `shell.bottom`, below all three columns, so the
+ *    columns shrink instead of being covered.
+ *
+ * Text, images and mode live in one shared store so both surfaces show the same
+ * note and switching never loses a keystroke. Images persist as blobs in
+ * IndexedDB, everything else in localStorage. Visible strings come from the
+ * Client locale service.
  */
 window.__ModuleLoader__.load({
   id: '@local/dsh-notepad',
@@ -21,6 +25,8 @@ window.__ModuleLoader__.load({
     const DB_NAME = 'dsh-notepad';
     const DB_VERSION = 1;
     const STORE_IMAGES = 'images';
+    const MODE_FLOAT = 'float';
+    const MODE_DOCK = 'dock';
     const MIN_W = 260;
     const MAX_W = 760;
     const MIN_H = 180;
@@ -32,6 +38,10 @@ window.__ModuleLoader__.load({
     const PEEK_LENGTH = 96;
     const PEEK_TRIGGER = 40;
     const TAB = 44;
+    const DOCK_MIN_H = 120;
+    const DOCK_MAX_H = 720;
+    const DOCK_DEFAULT_H = 220;
+    const DOCK_BAR = 38;
     const MAX_IMAGE_EDGE = 1600;
     const MAX_IMAGE_BYTES = 900 * 1024;
     const NOTICE_MS = 3200;
@@ -48,13 +58,14 @@ window.__ModuleLoader__.load({
       'saving': 'Saving',
       'chars': 'characters',
       'images': 'images',
-      'move': 'Drag to move — release near an edge to snap',
+      'move': 'Drag to move — release near an edge to snap, past it to tuck away',
       'resize': 'Drag to resize',
-      'peek': 'Drag it past the window edge to tuck it away, click to bring it back',
-      'peekRestore': 'Click to bring the notepad back',
+      'peek': 'Click to bring the notepad back',
       'dropHint': 'Drop images to add',
       'closePreview': 'Close preview',
-      'imageError': 'Could not add that image'
+      'imageError': 'Could not add that image',
+      'toDock': 'Dock to the bottom row',
+      'toFloat': 'Detach as a floating card'
     };
 
     const ZH = {
@@ -69,16 +80,17 @@ window.__ModuleLoader__.load({
       'saving': '保存中',
       'chars': '字',
       'images': '张图片',
-      'move': '拖动移动，靠近四边自动吸附',
+      'move': '拖动移动：靠近边缘吸附，拖过头则收起',
       'resize': '拖动调整大小',
-      'peek': '拖出窗口外可收起，点把手拉回来',
-      'peekRestore': '点击把记事本拉回来',
+      'peek': '点击把记事本拉回来',
       'dropHint': '松开以添加图片',
       'closePreview': '关闭预览',
-      'imageError': '这张图片添加失败'
+      'imageError': '这张图片添加失败',
+      'toDock': '停靠到底部栏',
+      'toFloat': '脱离为悬浮卡片'
     };
 
-    const CSS = [
+    const FLOAT_CSS = [
       '.dsh-notepad-card{position:absolute;z-index:2;display:flex;flex-direction:column;box-sizing:border-box;min-width:0;min-height:0;',
       'pointer-events:auto;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);',
       'border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-lg);',
@@ -146,6 +158,174 @@ window.__ModuleLoader__.load({
       '.dsh-notepad-peek--bottom{border-bottom:none;border-radius:var(--dsw-radius-md) var(--dsw-radius-md) 0 0}'
     ].join('');
 
+    const DOCK_CSS = [
+      '.dsh-notepad-dock{display:flex;flex-direction:column;box-sizing:border-box;width:100%;min-height:0;position:relative;',
+      'color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);border-top:.5px solid var(--dsw-alias-border-l3);',
+      'font-family:var(--dsw-font-family,inherit);font-size:14px;line-height:22px;',
+      '--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}',
+      '.dsh-notepad-dock__grip{position:absolute;left:0;right:0;top:-3px;height:6px;z-index:3;cursor:row-resize;touch-action:none}',
+      '.dsh-notepad-dock__grip:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.dsh-notepad-dock__head{flex:none;height:38px;padding:0 10px 0 14px;display:flex;align-items:center;gap:8px;',
+      'cursor:pointer;-webkit-app-region:no-drag;box-sizing:border-box}',
+      '.dsh-notepad-dock__headIcon{flex:none;display:flex;color:var(--dsw-alias-label-secondary)}',
+      '.dsh-notepad-dock__title{flex:none;font-weight:500}',
+      '.dsh-notepad-dock__meta{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+      'text-align:right;padding-right:2px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}',
+      '.dsh-notepad-dock__meta--notice{color:var(--dsw-alias-state-error-primary)}',
+      '.dsh-notepad-dock__btn{flex:none;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;',
+      'border:none;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;padding:0}',
+      '.dsh-notepad-dock__btn:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.dsh-notepad-dock__body{flex:1;min-height:0;display:flex;align-items:stretch;border-top:.5px solid var(--dsw-alias-border-l3)}',
+      '.dsh-notepad-dock__editor{flex:1;min-width:0;box-sizing:border-box;padding:8px 14px 12px;border:none;outline:none;resize:none;',
+      'background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:22px}',
+      '.dsh-notepad-dock__editor::placeholder{color:var(--dsw-alias-label-dimmed)}',
+      '.dsh-notepad-dock__media{flex:none;width:178px;box-sizing:border-box;display:grid;grid-template-columns:repeat(2,1fr);',
+      'gap:6px;padding:8px;align-content:start;overflow:auto;border-left:.5px solid var(--dsw-alias-border-l3)}',
+      '.dsh-notepad-dock__thumb{position:relative;aspect-ratio:1;border-radius:var(--dsw-radius-sm);overflow:hidden;',
+      'border:.5px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-layer-1)}',
+      '.dsh-notepad-dock__thumbOpen{position:absolute;inset:0;width:100%;height:100%;padding:0;border:none;background:transparent;cursor:zoom-in;display:block}',
+      '.dsh-notepad-dock__thumbOpen img{width:100%;height:100%;object-fit:cover;display:block}',
+      '.dsh-notepad-dock__thumbRemove{position:absolute;top:3px;right:3px;width:20px;height:20px;padding:0;border:none;border-radius:50%;',
+      'display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .12s ease;',
+      'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-soft)}',
+      '.dsh-notepad-dock__thumb:hover .dsh-notepad-dock__thumbRemove,.dsh-notepad-dock__thumbRemove:focus-visible{opacity:1}',
+      '.dsh-notepad-dock__drop{position:absolute;inset:4px;z-index:5;display:flex;flex-direction:column;gap:10px;align-items:center;',
+      'justify-content:center;color:var(--dsw-alias-brand-text);font-size:13px;border-radius:var(--dsw-radius-md);',
+      'border:1px dashed var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-2)}',
+      '.dsh-notepad-dock__preview{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:32px;',
+      'pointer-events:auto;cursor:zoom-out;background:var(--dsw-alias-bg-mask-1);backdrop-filter:var(--dsw-mask-blur)}',
+      '.dsh-notepad-dock__preview img{max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--dsw-radius-sm);',
+      'box-shadow:var(--dsw-elevation-prominent)}',
+      '.dsh-notepad-dock__previewClose{position:absolute;top:12px;right:12px;width:32px;height:32px;display:inline-flex;',
+      'align-items:center;justify-content:center;border:none;border-radius:var(--dsw-radius-sm);cursor:pointer;padding:0;',
+      'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}',
+      '.dsh-notepad-dock__previewClose:hover{background:var(--dsw-alias-bg-layer-3)}'
+    ].join('');
+
+    const CSS = FLOAT_CSS + DOCK_CSS;
+
+    /* ------------------------------------------------------------------ *
+     * Shared note state: one note, two surfaces.
+     * ------------------------------------------------------------------ */
+
+    const store = {
+      state: { text: '', images: [], mode: MODE_FLOAT, saved: true },
+      listeners: new Set(),
+      loaded: false,
+      saving: null,
+      boot: null,
+      load() {
+        if (this.loaded) return;
+        this.loaded = true;
+        let parsed = null;
+        try {
+          const raw = globalThis.localStorage.getItem(STORAGE_KEY);
+          if (raw) parsed = JSON.parse(raw);
+        } catch (err) {
+          parsed = null;
+        }
+        this.boot = parsed || {};
+        this.state = {
+          text: typeof this.boot.text === 'string' ? this.boot.text : '',
+          images: [],
+          mode: this.boot.mode === MODE_DOCK ? MODE_DOCK : MODE_FLOAT,
+          saved: true
+        };
+        loadImages()
+          .then((rows) => {
+            this.state = { ...this.state, images: rows };
+            this.emit();
+          })
+          .catch(() => {});
+      },
+      subscribe(listener) {
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
+      },
+      emit() {
+        for (const listener of this.listeners) listener();
+      },
+      write(partial) {
+        try {
+          const raw = globalThis.localStorage.getItem(STORAGE_KEY);
+          const current = raw ? JSON.parse(raw) : {};
+          globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...partial }));
+        } catch (err) {
+          /* storage full or unavailable: keep the in-memory state */
+        }
+      },
+      setText(text) {
+        this.state = { ...this.state, text, saved: false };
+        this.emit();
+        if (this.saving !== null) globalThis.clearTimeout(this.saving);
+        this.saving = globalThis.setTimeout(() => {
+          this.saving = null;
+          this.write({ text: this.state.text, mode: this.state.mode });
+          this.state = { ...this.state, saved: true };
+          this.emit();
+        }, 250);
+      },
+      setImages(images) {
+        this.state = { ...this.state, images };
+        this.emit();
+      },
+      setMode(mode) {
+        if (this.state.mode === mode) return;
+        if (this.saving !== null) {
+          globalThis.clearTimeout(this.saving);
+          this.saving = null;
+        }
+        this.state = { ...this.state, mode, saved: true };
+        this.write({ text: this.state.text, mode });
+        this.emit();
+      }
+    };
+
+    function useShared() {
+      const [, force] = useState(0);
+      useEffect(() => store.subscribe(() => force((value) => value + 1)), []);
+      store.load();
+      return store.state;
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Persisted geometry
+     * ------------------------------------------------------------------ */
+
+    function readGeometry() {
+      const fallback = {
+        width: DEFAULT_W,
+        height: DEFAULT_H,
+        x: null,
+        y: null,
+        collapsed: false,
+        peek: null,
+        dockHeight: DOCK_DEFAULT_H,
+        dockCollapsed: false
+      };
+      try {
+        store.load();
+        const boot = store.boot || {};
+        const num = (value, low, high, drop) => (
+          typeof value === 'number' && value >= low && value <= high ? value : drop
+        );
+        return {
+          width: num(boot.width, MIN_W, MAX_W, DEFAULT_W),
+          height: num(boot.height, MIN_H, MAX_H, DEFAULT_H),
+          x: typeof boot.x === 'number' ? boot.x : null,
+          y: typeof boot.y === 'number' ? boot.y : null,
+          collapsed: boot.collapsed === true,
+          peek: boot.peek === 'left' || boot.peek === 'right' || boot.peek === 'top' || boot.peek === 'bottom'
+            ? boot.peek
+            : null,
+          dockHeight: num(boot.dockHeight, DOCK_MIN_H, DOCK_MAX_H, DOCK_DEFAULT_H),
+          dockCollapsed: boot.dockCollapsed === true
+        };
+      } catch (err) {
+        return fallback;
+      }
+    }
+
     function chromeTop() {
       try {
         const raw = globalThis.getComputedStyle(document.documentElement).getPropertyValue('--dsh-frame-chrome-top');
@@ -155,45 +335,6 @@ window.__ModuleLoader__.load({
         return 0;
       }
     }
-
-    function readStored() {
-      const fallback = {
-        text: '',
-        width: DEFAULT_W,
-        height: DEFAULT_H,
-        x: null,
-        y: null,
-        collapsed: false,
-        peek: null
-      };
-      try {
-        const raw = globalThis.localStorage.getItem(STORAGE_KEY);
-        if (!raw) return fallback;
-        const parsed = JSON.parse(raw);
-        const num = (value, low, high, altitude) => (
-          typeof value === 'number' && value >= low && value <= high ? value : altitude
-        );
-        return {
-          text: typeof parsed.text === 'string' ? parsed.text : '',
-          width: num(parsed.width, MIN_W, MAX_W, DEFAULT_W),
-          height: num(parsed.height, MIN_H, MAX_H, DEFAULT_H),
-          x: typeof parsed.x === 'number' ? parsed.x : null,
-          y: typeof parsed.y === 'number' ? parsed.y : null,
-          collapsed: parsed.collapsed === true,
-          peek: parsed.peek === 'left' || parsed.peek === 'right' || parsed.peek === 'top' || parsed.peek === 'bottom'
-            ? parsed.peek
-            : null
-        };
-      } catch (err) {
-        return fallback;
-      }
-    }
-
-    /* ------------------------------------------------------------------ *
-     * Geometry helpers. The overlay layer spans the frame, so viewport
-     * coordinates are our coordinate space; only the window chrome band at
-     * the top is reserved.
-     * ------------------------------------------------------------------ */
 
     function bounds() {
       const w = typeof globalThis.innerWidth === 'number' && globalThis.innerWidth > 0 ? globalThis.innerWidth : 1280;
@@ -240,6 +381,14 @@ window.__ModuleLoader__.load({
       return { x, y: Math.max(box.top, box.h - hgt) };
     }
 
+    function snapRect(edge, x, y, w, hgt, box) {
+      const thickness = 3;
+      if (edge === 'left') return { left: '0px', top: y + 'px', width: thickness + 'px', height: hgt + 'px' };
+      if (edge === 'right') return { left: (box.w - thickness) + 'px', top: y + 'px', width: thickness + 'px', height: hgt + 'px' };
+      if (edge === 'top') return { left: x + 'px', top: box.top + 'px', width: w + 'px', height: thickness + 'px' };
+      return { left: x + 'px', top: (box.h - thickness) + 'px', width: w + 'px', height: thickness + 'px' };
+    }
+
     /** Handle geometry for a card tucked outside the window: PEEK px stays visible. */
     function peekHandleStyle(edge, pos, box) {
       if (edge === 'left' || edge === 'right') {
@@ -256,14 +405,6 @@ window.__ModuleLoader__.load({
         width: PEEK_LENGTH + 'px',
         height: PEEK + 'px'
       };
-    }
-
-    function snapRect(edge, x, y, w, hgt, box) {
-      const thickness = 3;
-      if (edge === 'left') return { left: '0px', top: y + 'px', width: thickness + 'px', height: hgt + 'px' };
-      if (edge === 'right') return { left: (box.w - thickness) + 'px', top: y + 'px', width: thickness + 'px', height: hgt + 'px' };
-      if (edge === 'top') return { left: x + 'px', top: (box.top) + 'px', width: w + 'px', height: thickness + 'px' };
-      return { left: x + 'px', top: (box.h - thickness) + 'px', width: w + 'px', height: thickness + 'px' };
     }
 
     /* ------------------------------------------------------------------ *
@@ -284,8 +425,8 @@ window.__ModuleLoader__.load({
         request.onupgradeneeded = () => {
           const db = request.result;
           if (!db.objectStoreNames.contains(STORE_IMAGES)) {
-            const store = db.createObjectStore(STORE_IMAGES, { keyPath: 'id' });
-            store.createIndex('createdAt', 'createdAt');
+            const created = db.createObjectStore(STORE_IMAGES, { keyPath: 'id' });
+            created.createIndex('createdAt', 'createdAt');
           }
         };
         request.onsuccess = () => resolve(request.result);
@@ -311,18 +452,18 @@ window.__ModuleLoader__.load({
     }
 
     function loadImages() {
-      return runTx('readonly', (store) => store.getAll()).then((rows) => {
+      return runTx('readonly', (db) => db.getAll()).then((rows) => {
         const list = Array.isArray(rows) ? rows : [];
         return list.slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
       });
     }
 
     function putImage(record) {
-      return runTx('readwrite', (store) => store.put(record));
+      return runTx('readwrite', (db) => db.put(record));
     }
 
     function deleteImage(id) {
-      return runTx('readwrite', (store) => store.delete(id));
+      return runTx('readwrite', (db) => db.delete(id));
     }
 
     async function normalizeImage(file) {
@@ -350,6 +491,79 @@ window.__ModuleLoader__.load({
       } finally {
         if (bitmap && typeof bitmap.close === 'function') bitmap.close();
       }
+    }
+
+    /** Shared image intake used by both surfaces. */
+    function useImageIntake() {
+      const [notice, setNotice] = useState('');
+
+      useEffect(() => {
+        if (!notice) return undefined;
+        const timer = globalThis.setTimeout(() => setNotice(''), NOTICE_MS);
+        return () => globalThis.clearTimeout(timer);
+      }, [notice]);
+
+      const addFiles = useCallback((fileList) => {
+        const list = Array.from(fileList || []).filter(
+          (file) => file && typeof file.type === 'string' && file.type.indexOf('image/') === 0
+        );
+        if (list.length === 0) return;
+        let failed = false;
+        list.reduce(
+          (chain, file) => chain.then(async () => {
+            try {
+              const blob = await normalizeImage(file);
+              const record = {
+                id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+                createdAt: Date.now(),
+                name: file.name || 'image',
+                type: blob.type || file.type,
+                blob
+              };
+              await putImage(record);
+              store.setImages(store.state.images.concat(record).sort((a, b) => a.createdAt - b.createdAt));
+            } catch (err) {
+              failed = true;
+            }
+          }),
+          Promise.resolve()
+        ).then(() => {
+          if (failed) setNotice('imageError');
+        });
+      }, []);
+
+      const removeImage = useCallback((id) => {
+        store.setImages(store.state.images.filter((image) => image.id !== id));
+        deleteImage(id).catch(() => {});
+      }, []);
+
+      return { notice, addFiles, removeImage };
+    }
+
+    /** Pointer drag helpers shared by move and resize. */
+    function useDrag() {
+      const moved = useRef(false);
+      const start = useCallback((event, onMove, onEnd) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        moved.current = false;
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const move = (moveEvent) => {
+          const dx = moveEvent.clientX - startX;
+          const dy = moveEvent.clientY - startY;
+          if (Math.abs(dx) > 4 || Math.abs(dy) > 4) moved.current = true;
+          onMove(dx, dy);
+        };
+        const up = () => {
+          globalThis.removeEventListener('pointermove', move);
+          globalThis.removeEventListener('pointerup', up);
+          if (onEnd) onEnd();
+        };
+        globalThis.addEventListener('pointermove', move);
+        globalThis.addEventListener('pointerup', up);
+      }, []);
+      return { start, moved };
     }
 
     /** Creates one object URL per image id and revokes them on removal/unmount. */
@@ -451,15 +665,43 @@ window.__ModuleLoader__.load({
       })
     );
 
+    const ChevronUpIcon = (props) => h(
+      'svg',
+      Object.assign({}, iconProps, props),
+      h('path', { d: 'M3.4 10.2 8 5.6l4.6 4.6', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' })
+    );
+
+    const ChevronDownIcon = (props) => h(
+      'svg',
+      Object.assign({}, iconProps, props),
+      h('path', { d: 'M3.4 5.8 8 10.4l4.6-4.6', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' })
+    );
+
+    /** Dock glyph: a frame with a filled strip along one side. */
+    const DockIcon = (props) => h(
+      'svg',
+      Object.assign({}, iconProps, props),
+      h('rect', { x: 2.4, y: 3.4, width: 11.2, height: 9.2, rx: 1.3, stroke: 'currentColor', strokeWidth: 1.2 }),
+      h('rect', { x: 2.4, y: 9.6, width: 11.2, height: 3, rx: 1.3, fill: 'currentColor' })
+    );
+
+    /** Float glyph: a framed panel outline with a gap on the bottom row. */
+    const FloatIcon = (props) => h(
+      'svg',
+      Object.assign({}, iconProps, props),
+      h('rect', { x: 2.2, y: 3.2, width: 8.4, height: 6.6, rx: 1.2, stroke: 'currentColor', strokeWidth: 1.2 }),
+      h('path', { d: 'M12.4 6.2h1.4M12.4 9h1.4M12.4 11.8h1.4', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' })
+    );
+
     /* ------------------------------------------------------------------ *
-     * Notepad
+     * Floating surface
      * ------------------------------------------------------------------ */
 
     function NotepadCard(props) {
       const t = (key) => (typeof props.t === 'function' ? props.t(key) : (EN[key] !== undefined ? EN[key] : key));
+      const shared = useShared();
 
-      const [boot] = useState(readStored);
-      const [text, setText] = useState(boot.text);
+      const [boot] = useState(readGeometry);
       const [width, setWidth] = useState(boot.width);
       const [height, setHeight] = useState(boot.height);
       const [pos, setPos] = useState(() => {
@@ -473,20 +715,18 @@ window.__ModuleLoader__.load({
       });
       const [collapsed, setCollapsed] = useState(boot.collapsed);
       const [peek, setPeek] = useState(boot.peek);
-      const [saved, setSaved] = useState(true);
-      const [images, setImages] = useState([]);
       const [preview, setPreview] = useState(null);
-      const [dragging, setDragging] = useState(false);
+      const [dropping, setDropping] = useState(false);
       const [snapEdge, setSnapEdge] = useState(null);
-      const [notice, setNotice] = useState('');
 
       const fileRef = useRef(null);
       const dragDepth = useRef(0);
-      const firstSave = useRef(true);
       const livePos = useRef(pos);
       const liveSize = useRef({ w: boot.width, h: boot.height });
-      const moved = useRef(false);
-      const urls = useObjectUrls(images);
+      const dragOrigin = useRef({ x: 0, y: 0 });
+      const { start: startDrag, moved } = useDrag();
+      const { notice, addFiles, removeImage } = useImageIntake();
+      const urls = useObjectUrls(shared.images);
 
       const applyPos = useCallback((next) => {
         livePos.current = next;
@@ -494,47 +734,11 @@ window.__ModuleLoader__.load({
       }, []);
 
       useEffect(() => {
-        if (firstSave.current) {
-          firstSave.current = false;
-          return undefined;
-        }
-        setSaved(false);
         const timer = globalThis.setTimeout(() => {
-          try {
-            globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify({
-              text,
-              width,
-              height,
-              x: pos.x,
-              y: pos.y,
-              collapsed,
-              peek
-            }));
-          } catch (err) {
-            /* storage full or unavailable: keep the in-memory state */
-          }
-          setSaved(true);
-        }, 250);
+          store.write({ width, height, x: pos.x, y: pos.y, collapsed, peek });
+        }, 200);
         return () => globalThis.clearTimeout(timer);
-      }, [text, width, height, pos.x, pos.y, collapsed, peek]);
-
-      useEffect(() => {
-        let alive = true;
-        loadImages()
-          .then((rows) => {
-            if (alive) setImages(rows);
-          })
-          .catch(() => {});
-        return () => {
-          alive = false;
-        };
-      }, []);
-
-      useEffect(() => {
-        if (!notice) return undefined;
-        const timer = globalThis.setTimeout(() => setNotice(''), NOTICE_MS);
-        return () => globalThis.clearTimeout(timer);
-      }, [notice]);
+      }, [width, height, pos.x, pos.y, collapsed, peek]);
 
       useEffect(() => {
         if (preview === null) return undefined;
@@ -545,7 +749,12 @@ window.__ModuleLoader__.load({
         return () => globalThis.removeEventListener('keydown', onKey, true);
       }, [preview]);
 
-      // Keep the card inside the frame when the window is resized.
+      useEffect(() => {
+        if (shared.images.length > 0 && preview !== null && !shared.images.some((image) => image.id === preview)) {
+          setPreview(null);
+        }
+      }, [shared.images, preview]);
+
       useEffect(() => {
         const onResize = () => {
           const box = bounds();
@@ -553,77 +762,13 @@ window.__ModuleLoader__.load({
           liveSize.current = resized;
           setWidth(resized.w);
           setHeight(resized.h);
-          const size = fitSize(width, height, box);
-          const fixed = fitPos(livePos.current.x, livePos.current.y, size.w, size.h, box);
+          const fixed = fitPos(livePos.current.x, livePos.current.y, resized.w, resized.h, box);
           applyPos({ x: fixed.x, y: fixed.y });
         };
         globalThis.addEventListener('resize', onResize);
         return () => globalThis.removeEventListener('resize', onResize);
-      }, [applyPos, width, height]);
+      }, [applyPos]);
 
-      const addFiles = useCallback((fileList) => {
-        const list = Array.from(fileList || []).filter(
-          (file) => file && typeof file.type === 'string' && file.type.indexOf('image/') === 0
-        );
-        if (list.length === 0) return;
-        let failed = false;
-        list.reduce(
-          (chain, file) => chain.then(async () => {
-            try {
-              const blob = await normalizeImage(file);
-              const record = {
-                id: Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
-                createdAt: Date.now(),
-                name: file.name || 'image',
-                type: blob.type || file.type,
-                blob
-              };
-              await putImage(record);
-              setImages((prev) => prev.concat(record).sort((a, b) => a.createdAt - b.createdAt));
-            } catch (err) {
-              failed = true;
-            }
-          }),
-          Promise.resolve()
-        ).then(() => {
-          if (failed) setNotice('imageError');
-        });
-      }, []);
-
-      const removeImage = useCallback((id) => {
-        setImages((prev) => prev.filter((image) => image.id !== id));
-        setPreview((prev) => (prev === id ? null : prev));
-        deleteImage(id).catch(() => {});
-      }, []);
-
-      const onClear = useCallback(() => setText(''), []);
-
-      /** Pointer drag with a live position ref so release sees the final spot. */
-      const startDrag = useCallback((event, onMove, onEnd) => {
-        if (event.button !== 0) return;
-        event.preventDefault();
-        moved.current = false;
-        const startX = event.clientX;
-        const startY = event.clientY;
-        const move = (moveEvent) => {
-          const dx = moveEvent.clientX - startX;
-          const dy = moveEvent.clientY - startY;
-          if (Math.abs(dx) > 4 || Math.abs(dy) > 4) moved.current = true;
-          onMove(dx, dy);
-        };
-        const up = () => {
-          globalThis.removeEventListener('pointermove', move);
-          globalThis.removeEventListener('pointerup', up);
-          if (onEnd) onEnd();
-        };
-        globalThis.addEventListener('pointermove', move);
-        globalThis.addEventListener('pointerup', up);
-      }, []);
-
-      const dragOrigin = useRef({ x: 0, y: 0 });
-
-      /* The card may be dragged past an edge; PEEK pixels always stay visible so
-         the release can re-anchor it as a slim handle. */
       const dragBox = useCallback((dx, dy, w, hgt) => {
         const box = bounds();
         const raw = { x: dragOrigin.current.x + dx, y: dragOrigin.current.y + dy };
@@ -636,8 +781,6 @@ window.__ModuleLoader__.load({
         };
       }, []);
 
-      /* Release rules: far out past an edge -> tuck into a handle there; otherwise
-         the usual flush snap; otherwise keep the clamped free position. */
       const settle = useCallback((w, hgt) => {
         const box = bounds();
         const p = livePos.current;
@@ -674,11 +817,11 @@ window.__ModuleLoader__.load({
       const onMoveCard = useCallback((event) => {
         dragOrigin.current = { x: livePos.current.x, y: livePos.current.y };
         startDrag(event, (dx, dy) => {
-          const next = dragBox(dx, dy, width, height);
+          const next = dragBox(dx, dy, liveSize.current.w, liveSize.current.h);
           applyPos(next.pos);
           setSnapEdge(next.edge);
-        }, () => settle(width, height));
-      }, [dragBox, height, settle, startDrag, width]);
+        }, () => settle(liveSize.current.w, liveSize.current.h));
+      }, [applyPos, dragBox, settle, startDrag]);
 
       const onMoveTab = useCallback((event) => {
         dragOrigin.current = { x: livePos.current.x, y: livePos.current.y };
@@ -687,7 +830,7 @@ window.__ModuleLoader__.load({
           applyPos(next.pos);
           setSnapEdge(next.edge);
         }, () => settle(TAB, TAB));
-      }, [dragBox, settle, startDrag]);
+      }, [applyPos, dragBox, settle, startDrag]);
 
       const onResizeCard = useCallback((event) => {
         const origin = { w: liveSize.current.w, h: liveSize.current.h };
@@ -700,8 +843,6 @@ window.__ModuleLoader__.load({
         });
       }, [startDrag]);
 
-      /* Every edge resizes: the opposite edge stays put, so dragging left or top
-         also moves the card. Collapsing at a limit keeps the far edge anchored. */
       const onEdgeResize = useCallback((event, side) => {
         const originPos = { x: livePos.current.x, y: livePos.current.y };
         const origin = { w: liveSize.current.w, h: liveSize.current.h };
@@ -738,7 +879,7 @@ window.__ModuleLoader__.load({
       const onDragEnter = (event) => {
         if (!event.dataTransfer) return;
         dragDepth.current += 1;
-        setDragging(true);
+        setDropping(true);
       };
 
       const onDragOver = (event) => {
@@ -749,14 +890,14 @@ window.__ModuleLoader__.load({
 
       const onDragLeave = () => {
         dragDepth.current = Math.max(0, dragDepth.current - 1);
-        if (dragDepth.current === 0) setDragging(false);
+        if (dragDepth.current === 0) setDropping(false);
       };
 
       const onDrop = (event) => {
         if (!event.dataTransfer) return;
         event.preventDefault();
         dragDepth.current = 0;
-        setDragging(false);
+        setDropping(false);
         if (collapsed) setCollapsed(false);
         addFiles(event.dataTransfer.files);
       };
@@ -777,10 +918,14 @@ window.__ModuleLoader__.load({
         addFiles(files);
       };
 
-      const previewImage = preview === null ? null : images.filter((image) => image.id === preview)[0] || null;
-      const status = notice ? t(notice) : (saved ? t('saved') : t('saving'));
-      const counter = text.length + ' ' + t('chars')
-        + (images.length > 0 ? ' · ' + images.length + ' ' + t('images') : '');
+      if (shared.mode !== MODE_FLOAT) return null;
+
+      const previewImage = preview === null
+        ? null
+        : shared.images.filter((image) => image.id === preview)[0] || null;
+      const status = notice ? t(notice) : (shared.saved ? t('saved') : t('saving'));
+      const counter = shared.text.length + ' ' + t('chars')
+        + (shared.images.length > 0 ? ' · ' + shared.images.length + ' ' + t('images') : '');
       const box = bounds();
       const cardW = collapsed ? TAB : width;
       const cardH = collapsed ? TAB : height;
@@ -803,191 +948,207 @@ window.__ModuleLoader__.load({
               onKeyDown: (event) => {
                 if (event.key === 'Enter' || event.key === ' ') restoreFromPeek();
               },
-              title: t('peekRestore'),
-              'aria-label': t('peekRestore')
+              title: t('peek'),
+              'aria-label': t('peek')
             },
             h(NoteIcon, { width: 14, height: 14 })
           )
           : collapsed
-          ? h(
-            'div',
-            {
-              className: 'dsh-notepad-tab',
-              style: { left: pos.x + 'px', top: pos.y + 'px', width: TAB + 'px', height: TAB + 'px' },
-              onPointerDown: onMoveTab,
-              onClick: () => {
-                if (moved.current) return;
-                setCollapsed(false);
-              },
-              role: 'button',
-              tabIndex: 0,
-              onKeyDown: (event) => {
-                if (event.key === 'Enter' || event.key === ' ') setCollapsed(false);
-              },
-              title: t('expand'),
-              'aria-label': t('expand')
-            },
-            h(NoteIcon, { width: 15, height: 15 })
-          )
-          : h(
-            'div',
-            {
-              className: 'dsh-notepad-card',
-              style: { left: pos.x + 'px', top: pos.y + 'px', width: width + 'px', height: height + 'px' },
-              onDragEnter,
-              onDragOver,
-              onDragLeave,
-              onDrop,
-              onPaste
-            },
-            h(
+            ? h(
               'div',
               {
-                className: 'dsh-notepad-card__head',
-                onPointerDown: onMoveCard,
-                title: t('move')
+                className: 'dsh-notepad-tab',
+                style: { left: pos.x + 'px', top: pos.y + 'px', width: TAB + 'px', height: TAB + 'px' },
+                onPointerDown: onMoveTab,
+                onClick: () => {
+                  if (moved.current) return;
+                  setCollapsed(false);
+                },
+                role: 'button',
+                tabIndex: 0,
+                onKeyDown: (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') setCollapsed(false);
+                },
+                title: t('expand'),
+                'aria-label': t('expand')
               },
-              h(NoteIcon, { className: 'dsh-notepad-card__headIcon' }),
-              h('span', { className: 'dsh-notepad-card__title' }, t('title')),
-              h(
-                'button',
-                {
-                  type: 'button',
-                  className: 'dsh-notepad-card__btn',
-                  onClick: (event) => {
-                    event.stopPropagation();
-                    if (fileRef.current) fileRef.current.click();
-                  },
-                  onPointerDown: (event) => event.stopPropagation(),
-                  title: t('addImage'),
-                  'aria-label': t('addImage')
-                },
-                h(ImagePlusIcon)
-              ),
-              h(
-                'button',
-                {
-                  type: 'button',
-                  className: 'dsh-notepad-card__btn',
-                  onClick: (event) => {
-                    event.stopPropagation();
-                    onClear();
-                  },
-                  onPointerDown: (event) => event.stopPropagation(),
-                  title: t('clear'),
-                  'aria-label': t('clear')
-                },
-                h(ClearIcon)
-              ),
-              h(
-                'button',
-                {
-                  type: 'button',
-                  className: 'dsh-notepad-card__btn',
-                  onClick: (event) => {
-                    event.stopPropagation();
-                    setCollapsed(true);
-                  },
-                  onPointerDown: (event) => event.stopPropagation(),
-                  title: t('collapse'),
-                  'aria-label': t('collapse')
-                },
-                h(CollapseIcon)
-              )
-            ),
-            h(
+              h(NoteIcon, { width: 15, height: 15 })
+            )
+            : h(
               'div',
-              { className: 'dsh-notepad-card__body' },
-              h('textarea', {
-                className: 'dsh-notepad-card__editor',
-                value: text,
-                placeholder: t('placeholder'),
-                spellCheck: false,
-                onChange: (event) => setText(event.target.value)
+              {
+                className: 'dsh-notepad-card',
+                style: { left: pos.x + 'px', top: pos.y + 'px', width: width + 'px', height: height + 'px' },
+                onDragEnter,
+                onDragOver,
+                onDragLeave,
+                onDrop,
+                onPaste
+              },
+              h(
+                'div',
+                {
+                  className: 'dsh-notepad-card__head',
+                  onPointerDown: onMoveCard,
+                  title: t('move')
+                },
+                h(NoteIcon, { className: 'dsh-notepad-card__headIcon' }),
+                h('span', { className: 'dsh-notepad-card__title' }, t('title')),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dsh-notepad-card__btn',
+                    onClick: (event) => {
+                      event.stopPropagation();
+                      if (fileRef.current) fileRef.current.click();
+                    },
+                    onPointerDown: (event) => event.stopPropagation(),
+                    title: t('addImage'),
+                    'aria-label': t('addImage')
+                  },
+                  h(ImagePlusIcon)
+                ),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dsh-notepad-card__btn',
+                    onClick: (event) => {
+                      event.stopPropagation();
+                      store.setText('');
+                    },
+                    onPointerDown: (event) => event.stopPropagation(),
+                    title: t('clear'),
+                    'aria-label': t('clear')
+                  },
+                  h(ClearIcon)
+                ),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dsh-notepad-card__btn',
+                    onClick: (event) => {
+                      event.stopPropagation();
+                      store.setMode(MODE_DOCK);
+                    },
+                    onPointerDown: (event) => event.stopPropagation(),
+                    title: t('toDock'),
+                    'aria-label': t('toDock')
+                  },
+                  h(DockIcon)
+                ),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dsh-notepad-card__btn',
+                    onClick: (event) => {
+                      event.stopPropagation();
+                      setCollapsed(true);
+                    },
+                    onPointerDown: (event) => event.stopPropagation(),
+                    title: t('collapse'),
+                    'aria-label': t('collapse')
+                  },
+                  h(CollapseIcon)
+                )
+              ),
+              h(
+                'div',
+                { className: 'dsh-notepad-card__body' },
+                h('textarea', {
+                  className: 'dsh-notepad-card__editor',
+                  value: shared.text,
+                  placeholder: t('placeholder'),
+                  spellCheck: false,
+                  onChange: (event) => store.setText(event.target.value)
+                }),
+                shared.images.length > 0
+                  ? h(
+                    'div',
+                    { className: 'dsh-notepad-card__media' },
+                    shared.images.map((image) => h(
+                      'div',
+                      { key: image.id, className: 'dsh-notepad-card__thumb' },
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dsh-notepad-card__thumbOpen',
+                          onClick: () => setPreview(image.id),
+                          title: image.name
+                        },
+                        urls[image.id] ? h('img', { src: urls[image.id], alt: image.name, draggable: false }) : null
+                      ),
+                      h(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dsh-notepad-card__thumbRemove',
+                          onClick: () => removeImage(image.id),
+                          title: t('removeImage'),
+                          'aria-label': t('removeImage')
+                        },
+                        h(CloseIcon, { width: 12, height: 12 })
+                      )
+                    ))
+                  )
+                  : null
+              ),
+              h(
+                'div',
+                { className: 'dsh-notepad-card__foot' },
+                h(
+                  'span',
+                  { className: 'dsh-notepad-card__state' + (notice ? ' dsh-notepad-card__state--notice' : '') },
+                  status
+                ),
+                h('span', null, counter)
+              ),
+              h('div', {
+                className: 'dsh-notepad-card__edge dsh-notepad-card__edge--left',
+                onPointerDown: (event) => onEdgeResize(event, 'left'),
+                title: t('resize'),
+                'aria-hidden': 'true'
               }),
-              images.length > 0
+              h('div', {
+                className: 'dsh-notepad-card__edge dsh-notepad-card__edge--right',
+                onPointerDown: (event) => onEdgeResize(event, 'right'),
+                title: t('resize'),
+                'aria-hidden': 'true'
+              }),
+              h('div', {
+                className: 'dsh-notepad-card__edge dsh-notepad-card__edge--top',
+                onPointerDown: (event) => onEdgeResize(event, 'top'),
+                title: t('resize'),
+                'aria-hidden': 'true'
+              }),
+              h('div', {
+                className: 'dsh-notepad-card__edge dsh-notepad-card__edge--bottom',
+                onPointerDown: (event) => onEdgeResize(event, 'bottom'),
+                title: t('resize'),
+                'aria-hidden': 'true'
+              }),
+              h('div', {
+                className: 'dsh-notepad-card__grip',
+                onPointerDown: onResizeCard,
+                title: t('resize'),
+                'aria-hidden': 'true'
+              }),
+              dropping
                 ? h(
                   'div',
-                  { className: 'dsh-notepad-card__media' },
-                  images.map((image) => h(
-                    'div',
-                    { key: image.id, className: 'dsh-notepad-card__thumb' },
-                    h(
-                      'button',
-                      {
-                        type: 'button',
-                        className: 'dsh-notepad-card__thumbOpen',
-                        onClick: () => setPreview(image.id),
-                        title: image.name
-                      },
-                      urls[image.id] ? h('img', { src: urls[image.id], alt: image.name, draggable: false }) : null
-                    ),
-                    h(
-                      'button',
-                      {
-                        type: 'button',
-                        className: 'dsh-notepad-card__thumbRemove',
-                        onClick: () => removeImage(image.id),
-                        title: t('removeImage'),
-                        'aria-label': t('removeImage')
-                      },
-                      h(CloseIcon, { width: 12, height: 12 })
-                    )
-                  ))
+                  { className: 'dsh-notepad-card__drop' },
+                  h(ImagePlusIcon, { width: 22, height: 22 }),
+                  h('span', null, t('dropHint'))
                 )
                 : null
             ),
-            h(
-              'div',
-              { className: 'dsh-notepad-card__foot' },
-              h(
-                'span',
-                { className: 'dsh-notepad-card__state' + (notice ? ' dsh-notepad-card__state--notice' : '') },
-                status
-              ),
-              h('span', null, counter)
-            ),
-            h('div', {
-              className: 'dsh-notepad-card__edge dsh-notepad-card__edge--left',
-              onPointerDown: (event) => onEdgeResize(event, 'left'),
-              title: t('resize'),
-              'aria-hidden': 'true'
-            }),
-            h('div', {
-              className: 'dsh-notepad-card__edge dsh-notepad-card__edge--right',
-              onPointerDown: (event) => onEdgeResize(event, 'right'),
-              title: t('resize'),
-              'aria-hidden': 'true'
-            }),
-            h('div', {
-              className: 'dsh-notepad-card__edge dsh-notepad-card__edge--top',
-              onPointerDown: (event) => onEdgeResize(event, 'top'),
-              title: t('resize'),
-              'aria-hidden': 'true'
-            }),
-            h('div', {
-              className: 'dsh-notepad-card__edge dsh-notepad-card__edge--bottom',
-              onPointerDown: (event) => onEdgeResize(event, 'bottom'),
-              title: t('resize'),
-              'aria-hidden': 'true'
-            }),
-            h('div', {
-              className: 'dsh-notepad-card__grip',
-              onPointerDown: onResizeCard,
-              title: t('resize'),
-              'aria-hidden': 'true'
-            }),
-            dragging
-              ? h(
-                'div',
-                { className: 'dsh-notepad-card__drop' },
-                h(ImagePlusIcon, { width: 22, height: 22 }),
-                h('span', null, t('dropHint'))
-              )
-              : null
-          ),
-        previewImage
-          ? h(
+        previewImage === null
+          ? null
+          : h(
             'div',
             {
               className: 'dsh-notepad-card__preview',
@@ -1011,8 +1172,7 @@ window.__ModuleLoader__.load({
               },
               h(CloseIcon)
             )
-          )
-          : null,
+          ),
         h('input', {
           ref: fileRef,
           type: 'file',
@@ -1024,6 +1184,295 @@ window.__ModuleLoader__.load({
             event.target.value = '';
           }
         })
+      );
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Docked surface
+     * ------------------------------------------------------------------ */
+
+    function NotepadDock(props) {
+      const t = (key) => (typeof props.t === 'function' ? props.t(key) : (EN[key] !== undefined ? EN[key] : key));
+      const shared = useShared();
+
+      const [boot] = useState(readGeometry);
+      const [height, setHeight] = useState(boot.dockHeight);
+      const [collapsed, setCollapsed] = useState(boot.dockCollapsed);
+      const [preview, setPreview] = useState(null);
+      const [dropping, setDropping] = useState(false);
+
+      const fileRef = useRef(null);
+      const dragDepth = useRef(0);
+      const liveHeight = useRef(boot.dockHeight);
+      const { start: startDrag } = useDrag();
+      const { notice, addFiles, removeImage } = useImageIntake();
+      const urls = useObjectUrls(shared.images);
+
+      useEffect(() => {
+        const timer = globalThis.setTimeout(() => {
+          store.write({ dockHeight: height, dockCollapsed: collapsed });
+        }, 200);
+        return () => globalThis.clearTimeout(timer);
+      }, [height, collapsed]);
+
+      useEffect(() => {
+        if (preview === null) return undefined;
+        const onKey = (event) => {
+          if (event.key === 'Escape') setPreview(null);
+        };
+        globalThis.addEventListener('keydown', onKey, true);
+        return () => globalThis.removeEventListener('keydown', onKey, true);
+      }, [preview]);
+
+      useEffect(() => {
+        if (preview !== null && !shared.images.some((image) => image.id === preview)) setPreview(null);
+      }, [shared.images, preview]);
+
+      const onResizeStart = useCallback((event) => {
+        const origin = liveHeight.current;
+        startDrag(event, (dx, dy) => {
+          const limit = Math.min(DOCK_MAX_H, Math.max(DOCK_MIN_H, globalThis.innerHeight * 0.7));
+          const next = Math.min(limit, Math.max(DOCK_MIN_H, origin - dy));
+          liveHeight.current = next;
+          setHeight(next);
+        });
+      }, [startDrag]);
+
+      const onDragEnter = (event) => {
+        if (!event.dataTransfer) return;
+        dragDepth.current += 1;
+        setDropping(true);
+      };
+
+      const onDragOver = (event) => {
+        if (!event.dataTransfer) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      };
+
+      const onDragLeave = () => {
+        dragDepth.current = Math.max(0, dragDepth.current - 1);
+        if (dragDepth.current === 0) setDropping(false);
+      };
+
+      const onDrop = (event) => {
+        if (!event.dataTransfer) return;
+        event.preventDefault();
+        dragDepth.current = 0;
+        setDropping(false);
+        addFiles(event.dataTransfer.files);
+      };
+
+      const onPaste = (event) => {
+        const items = event.clipboardData && event.clipboardData.items;
+        if (!items) return;
+        const files = [];
+        for (let index = 0; index < items.length; index += 1) {
+          const item = items[index];
+          if (item && item.kind === 'file' && typeof item.type === 'string' && item.type.indexOf('image/') === 0) {
+            const file = item.getAsFile();
+            if (file) files.push(file);
+          }
+        }
+        if (files.length === 0) return;
+        event.preventDefault();
+        addFiles(files);
+      };
+
+      if (shared.mode !== MODE_DOCK) return null;
+
+      const previewImage = preview === null
+        ? null
+        : shared.images.filter((image) => image.id === preview)[0] || null;
+      const status = notice ? t(notice) : (shared.saved ? t('saved') : t('saving'));
+      const counter = shared.text.length + ' ' + t('chars')
+        + (shared.images.length > 0 ? ' · ' + shared.images.length + ' ' + t('images') : '');
+      const limit = Math.min(DOCK_MAX_H, Math.max(DOCK_MIN_H, globalThis.innerHeight * 0.7));
+      const dockHeight = collapsed ? DOCK_BAR : Math.min(Math.max(height, DOCK_MIN_H), limit);
+
+      return h(
+        React.Fragment,
+        null,
+        h(
+          'div',
+          {
+            className: 'dsh-notepad-dock',
+            style: { height: dockHeight + 'px' },
+            onDragEnter,
+            onDragOver,
+            onDragLeave,
+            onDrop,
+            onPaste
+          },
+          h('div', {
+            className: 'dsh-notepad-dock__grip',
+            onPointerDown: onResizeStart,
+            title: t('resize'),
+            'aria-hidden': 'true'
+          }),
+          h(
+            'div',
+            {
+              className: 'dsh-notepad-dock__head',
+              onClick: () => setCollapsed((prev) => !prev),
+              title: collapsed ? t('expand') : t('collapse')
+            },
+            h(NoteIcon, { className: 'dsh-notepad-dock__headIcon' }),
+            h('span', { className: 'dsh-notepad-dock__title' }, t('title')),
+            h(
+              'span',
+              { className: 'dsh-notepad-dock__meta' + (notice ? ' dsh-notepad-dock__meta--notice' : '') },
+              status + ' · ' + counter
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dsh-notepad-dock__btn',
+                onClick: (event) => {
+                  event.stopPropagation();
+                  if (fileRef.current) fileRef.current.click();
+                },
+                title: t('addImage'),
+                'aria-label': t('addImage')
+              },
+              h(ImagePlusIcon)
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dsh-notepad-dock__btn',
+                onClick: (event) => {
+                  event.stopPropagation();
+                  store.setText('');
+                },
+                title: t('clear'),
+                'aria-label': t('clear')
+              },
+              h(ClearIcon)
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dsh-notepad-dock__btn',
+                onClick: (event) => {
+                  event.stopPropagation();
+                  store.setMode(MODE_FLOAT);
+                },
+                title: t('toFloat'),
+                'aria-label': t('toFloat')
+              },
+              h(FloatIcon)
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dsh-notepad-dock__btn',
+                onClick: (event) => {
+                  event.stopPropagation();
+                  setCollapsed((prev) => !prev);
+                },
+                title: collapsed ? t('expand') : t('collapse'),
+                'aria-label': collapsed ? t('expand') : t('collapse'),
+                'aria-expanded': !collapsed
+              },
+              collapsed ? h(ChevronUpIcon) : h(ChevronDownIcon)
+            )
+          ),
+          collapsed
+            ? null
+            : h(
+              'div',
+              { className: 'dsh-notepad-dock__body' },
+              h('textarea', {
+                className: 'dsh-notepad-dock__editor',
+                value: shared.text,
+                placeholder: t('placeholder'),
+                spellCheck: false,
+                onChange: (event) => store.setText(event.target.value)
+              }),
+              shared.images.length > 0
+                ? h(
+                  'div',
+                  { className: 'dsh-notepad-dock__media' },
+                  shared.images.map((image) => h(
+                    'div',
+                    { key: image.id, className: 'dsh-notepad-dock__thumb' },
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dsh-notepad-dock__thumbOpen',
+                        onClick: () => setPreview(image.id),
+                        title: image.name
+                      },
+                      urls[image.id] ? h('img', { src: urls[image.id], alt: image.name, draggable: false }) : null
+                    ),
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dsh-notepad-dock__thumbRemove',
+                        onClick: () => removeImage(image.id),
+                        title: t('removeImage'),
+                        'aria-label': t('removeImage')
+                      },
+                      h(CloseIcon, { width: 12, height: 12 })
+                    )
+                  ))
+                )
+                : null
+            ),
+          h('input', {
+            ref: fileRef,
+            type: 'file',
+            accept: 'image/*',
+            multiple: true,
+            style: { display: 'none' },
+            onChange: (event) => {
+              addFiles(event.target.files);
+              event.target.value = '';
+            }
+          }),
+          dropping && !collapsed
+            ? h(
+              'div',
+              { className: 'dsh-notepad-dock__drop' },
+              h(ImagePlusIcon, { width: 22, height: 22 }),
+              h('span', null, t('dropHint'))
+            )
+            : null
+        ),
+        previewImage === null
+          ? null
+          : h(
+            'div',
+            {
+              className: 'dsh-notepad-dock__preview',
+              onClick: () => setPreview(null),
+              role: 'presentation'
+            },
+            urls[previewImage.id]
+              ? h('img', { src: urls[previewImage.id], alt: previewImage.name, draggable: false })
+              : null,
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dsh-notepad-dock__previewClose',
+                onClick: (event) => {
+                  event.stopPropagation();
+                  setPreview(null);
+                },
+                title: t('closePreview'),
+                'aria-label': t('closePreview')
+              },
+              h(CloseIcon)
+            )
+          )
       );
     }
 
@@ -1064,6 +1513,12 @@ window.__ModuleLoader__.load({
           order: 100,
           locale: NS
         }, NotepadCard));
+
+        ctx.slots.inject('shell.bottom', () => ctx.slots.register({
+          name: 'shell.bottom',
+          id: 'dsh-notepad-dock',
+          locale: NS
+        }, NotepadDock));
       }
     };
   }
