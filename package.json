@@ -1,9 +1,9 @@
 {
   "name": "@local/dsh-notepad",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
-  "description": "Persistent notepad docked in the Harness Web UI bottom row, with image attachments.",
+  "description": "Floating notepad card for the Harness Web UI that snaps to any of the four edges, with image attachments.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

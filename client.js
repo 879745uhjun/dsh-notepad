@@ -1,12 +1,13 @@
 /**
  * Client half of the notepad plugin.
  *
- * Registers the notepad into the `shell.bottom` seat: a real layout row below the
- * sidebar, the centre column and the right column, so nothing is ever covered.
- * The row keeps its own height, can be collapsed to a thin bar, and survives
- * main-panel navigation. Note text, dock height and the collapsed state persist
- * in localStorage; images persist in IndexedDB. Every visible string comes from
- * the Client locale service.
+ * A floating notepad card on the frame-wide overlay layer. Drag its header to
+ * move it; releasing within 64px of any of the four edges snaps it flush against
+ * that edge, with an accent line previewing the target edge during the drag.
+ * Drag the bottom-right corner to resize. The header collapses it to a small tab
+ * that can itself be dragged to another edge and clicked to expand again.
+ * Text, geometry and collapse state persist in localStorage; images persist in
+ * IndexedDB. Every visible string comes from the Client locale service.
  */
 window.__ModuleLoader__.load({
   id: '@local/dsh-notepad',
@@ -20,10 +21,14 @@ window.__ModuleLoader__.load({
     const DB_NAME = 'dsh-notepad';
     const DB_VERSION = 1;
     const STORE_IMAGES = 'images';
-    const BAR_HEIGHT = 38;
-    const MIN_HEIGHT = 120;
-    const MAX_HEIGHT = 720;
-    const DEFAULT_HEIGHT = 220;
+    const MIN_W = 260;
+    const MAX_W = 760;
+    const MIN_H = 180;
+    const MAX_H = 760;
+    const DEFAULT_W = 380;
+    const DEFAULT_H = 300;
+    const SNAP = 64;
+    const TAB = 44;
     const MAX_IMAGE_EDGE = 1600;
     const MAX_IMAGE_BYTES = 900 * 1024;
     const NOTICE_MS = 3200;
@@ -40,6 +45,7 @@ window.__ModuleLoader__.load({
       'saving': 'Saving',
       'chars': 'characters',
       'images': 'images',
+      'move': 'Drag to move — release near an edge to snap',
       'resize': 'Drag to resize',
       'dropHint': 'Drop images to add',
       'closePreview': 'Close preview',
@@ -58,73 +64,163 @@ window.__ModuleLoader__.load({
       'saving': '保存中',
       'chars': '字',
       'images': '张图片',
-      'resize': '拖动调整高度',
+      'move': '拖动移动，靠近四边自动吸附',
+      'resize': '拖动调整大小',
       'dropHint': '松开以添加图片',
       'closePreview': '关闭预览',
       'imageError': '这张图片添加失败'
     };
 
     const CSS = [
-      '.dsh-notepad-dock{display:flex;flex-direction:column;box-sizing:border-box;width:100%;min-height:0;position:relative;',
-      'color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);',
-      'border-top:.5px solid var(--dsw-alias-border-l3);',
+      '.dsh-notepad-card{position:absolute;z-index:2;display:flex;flex-direction:column;box-sizing:border-box;min-width:0;min-height:0;',
+      'pointer-events:auto;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);',
+      'border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-lg);',
+      'box-shadow:var(--dsw-elevation-prominent);overflow:hidden;',
       'font-family:var(--dsw-font-family,inherit);font-size:14px;line-height:22px;',
       '--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}',
-      '.dsh-notepad-dock__grip{position:absolute;left:0;right:0;top:-3px;height:6px;z-index:3;cursor:row-resize;touch-action:none}',
-      '.dsh-notepad-dock__grip:hover{background:var(--dsw-alias-interactive-bg-hover)}',
-      '.dsh-notepad-dock__head{flex:none;height:38px;padding:0 10px 0 14px;display:flex;align-items:center;gap:8px;',
-      'cursor:pointer;-webkit-app-region:no-drag;box-sizing:border-box}',
-      '.dsh-notepad-dock__headIcon{flex:none;display:flex;color:var(--dsw-alias-label-secondary)}',
-      '.dsh-notepad-dock__title{flex:none;font-weight:500}',
-      '.dsh-notepad-dock__meta{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
-      'text-align:right;padding-right:2px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}',
-      '.dsh-notepad-dock__meta--notice{color:var(--dsw-alias-state-error-primary)}',
-      '.dsh-notepad-dock__btn{flex:none;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;',
+      '.dsh-notepad-card__head{flex:none;height:40px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;',
+      'box-sizing:border-box;border-bottom:.5px solid var(--dsw-alias-border-l3);',
+      'cursor:grab;-webkit-app-region:no-drag;touch-action:none;user-select:none}',
+      '.dsh-notepad-card__head:active{cursor:grabbing}',
+      '.dsh-notepad-card__headIcon{flex:none;display:flex;color:var(--dsw-alias-label-secondary)}',
+      '.dsh-notepad-card__title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}',
+      '.dsh-notepad-card__btn{flex:none;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;',
       'border:none;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-primary);cursor:pointer;padding:0}',
-      '.dsh-notepad-dock__btn:hover{background:var(--dsw-alias-interactive-bg-hover)}',
-      '.dsh-notepad-dock__body{flex:1;min-height:0;display:flex;align-items:stretch;border-top:.5px solid var(--dsw-alias-border-l3)}',
-      '.dsh-notepad-dock__editor{flex:1;min-width:0;box-sizing:border-box;padding:8px 14px 12px;border:none;outline:none;resize:none;',
+      '.dsh-notepad-card__btn:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.dsh-notepad-card__body{flex:1;min-height:0;display:flex;align-items:stretch}',
+      '.dsh-notepad-card__editor{flex:1;min-width:0;box-sizing:border-box;padding:10px 12px;border:none;outline:none;resize:none;',
       'background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:22px}',
-      '.dsh-notepad-dock__editor::placeholder{color:var(--dsw-alias-label-dimmed)}',
-      '.dsh-notepad-dock__media{flex:none;width:178px;box-sizing:border-box;display:grid;grid-template-columns:repeat(2,1fr);',
+      '.dsh-notepad-card__editor::placeholder{color:var(--dsw-alias-label-dimmed)}',
+      '.dsh-notepad-card__media{flex:none;width:136px;box-sizing:border-box;display:grid;grid-template-columns:repeat(2,1fr);',
       'gap:6px;padding:8px;align-content:start;overflow:auto;border-left:.5px solid var(--dsw-alias-border-l3)}',
-      '.dsh-notepad-dock__thumb{position:relative;aspect-ratio:1;border-radius:var(--dsw-radius-sm);overflow:hidden;',
+      '.dsh-notepad-card__thumb{position:relative;aspect-ratio:1;border-radius:var(--dsw-radius-sm);overflow:hidden;',
       'border:.5px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-layer-1)}',
-      '.dsh-notepad-dock__thumbOpen{position:absolute;inset:0;width:100%;height:100%;padding:0;border:none;background:transparent;cursor:zoom-in;display:block}',
-      '.dsh-notepad-dock__thumbOpen img{width:100%;height:100%;object-fit:cover;display:block}',
-      '.dsh-notepad-dock__thumbRemove{position:absolute;top:3px;right:3px;width:20px;height:20px;padding:0;border:none;border-radius:50%;',
+      '.dsh-notepad-card__thumbOpen{position:absolute;inset:0;width:100%;height:100%;padding:0;border:none;background:transparent;cursor:zoom-in;display:block}',
+      '.dsh-notepad-card__thumbOpen img{width:100%;height:100%;object-fit:cover;display:block}',
+      '.dsh-notepad-card__thumbRemove{position:absolute;top:2px;right:2px;width:20px;height:20px;padding:0;border:none;border-radius:50%;',
       'display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .12s ease;',
       'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-soft)}',
-      '.dsh-notepad-dock__thumb:hover .dsh-notepad-dock__thumbRemove,.dsh-notepad-dock__thumbRemove:focus-visible{opacity:1}',
-      '.dsh-notepad-dock__drop{position:absolute;inset:4px;z-index:5;display:flex;flex-direction:column;gap:10px;align-items:center;',
+      '.dsh-notepad-card__thumb:hover .dsh-notepad-card__thumbRemove,.dsh-notepad-card__thumbRemove:focus-visible{opacity:1}',
+      '.dsh-notepad-card__foot{flex:none;height:26px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;',
+      'box-sizing:border-box;border-top:.5px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px}',
+      '.dsh-notepad-card__state--notice{color:var(--dsw-alias-state-error-primary)}',
+      '.dsh-notepad-card__grip{position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;z-index:4;',
+      'touch-action:none;background:linear-gradient(135deg,transparent 46%,var(--dsw-alias-border-l3) 46%)}',
+      '.dsh-notepad-card__drop{position:absolute;inset:6px;z-index:5;display:flex;flex-direction:column;gap:10px;align-items:center;',
       'justify-content:center;color:var(--dsw-alias-brand-text);font-size:13px;border-radius:var(--dsw-radius-md);',
       'border:1px dashed var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-2)}',
-      '.dsh-notepad-dock__preview{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:32px;',
-      'cursor:zoom-out;background:var(--dsw-alias-bg-mask-1);backdrop-filter:var(--dsw-mask-blur)}',
-      '.dsh-notepad-dock__preview img{max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--dsw-radius-sm);',
+      '.dsh-notepad-card__preview{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:32px;',
+      'pointer-events:auto;cursor:zoom-out;background:var(--dsw-alias-bg-mask-1);backdrop-filter:var(--dsw-mask-blur)}',
+      '.dsh-notepad-card__preview img{max-width:100%;max-height:100%;object-fit:contain;border-radius:var(--dsw-radius-sm);',
       'box-shadow:var(--dsw-elevation-prominent)}',
-      '.dsh-notepad-dock__previewClose{position:absolute;top:12px;right:12px;width:32px;height:32px;display:inline-flex;',
+      '.dsh-notepad-card__previewClose{position:absolute;top:12px;right:12px;width:32px;height:32px;display:inline-flex;',
       'align-items:center;justify-content:center;border:none;border-radius:var(--dsw-radius-sm);cursor:pointer;padding:0;',
       'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}',
-      '.dsh-notepad-dock__previewClose:hover{background:var(--dsw-alias-bg-layer-3)}'
+      '.dsh-notepad-card__previewClose:hover{background:var(--dsw-alias-bg-layer-3)}',
+      '.dsh-notepad-tab{position:absolute;z-index:2;display:flex;align-items:center;justify-content:center;box-sizing:border-box;',
+      'pointer-events:auto;border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md);',
+      'background:var(--dsw-alias-bg-layer-2);box-shadow:var(--dsw-elevation-panel);color:var(--dsw-alias-label-secondary);',
+      'cursor:grab;touch-action:none;user-select:none}',
+      '.dsh-notepad-tab:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-3)}',
+      '.dsh-notepad-snap{position:absolute;z-index:3;background:var(--dsw-alias-brand-primary);pointer-events:none;border-radius:2px}'
     ].join('');
 
+    function chromeTop() {
+      try {
+        const raw = globalThis.getComputedStyle(document.documentElement).getPropertyValue('--dsh-frame-chrome-top');
+        const value = Number.parseFloat(raw);
+        return Number.isFinite(value) && value > 0 ? value : 0;
+      } catch (err) {
+        return 0;
+      }
+    }
+
     function readStored() {
-      const fallback = { text: '', height: DEFAULT_HEIGHT, collapsed: false };
+      const fallback = {
+        text: '',
+        width: DEFAULT_W,
+        height: DEFAULT_H,
+        x: null,
+        y: null,
+        collapsed: false
+      };
       try {
         const raw = globalThis.localStorage.getItem(STORAGE_KEY);
         if (!raw) return fallback;
         const parsed = JSON.parse(raw);
+        const num = (value, low, high, altitude) => (
+          typeof value === 'number' && value >= low && value <= high ? value : altitude
+        );
         return {
           text: typeof parsed.text === 'string' ? parsed.text : '',
-          height: typeof parsed.height === 'number' && parsed.height >= MIN_HEIGHT && parsed.height <= MAX_HEIGHT
-            ? parsed.height
-            : DEFAULT_HEIGHT,
+          width: num(parsed.width, MIN_W, MAX_W, DEFAULT_W),
+          height: num(parsed.height, MIN_H, MAX_H, DEFAULT_H),
+          x: typeof parsed.x === 'number' ? parsed.x : null,
+          y: typeof parsed.y === 'number' ? parsed.y : null,
           collapsed: parsed.collapsed === true
         };
       } catch (err) {
         return fallback;
       }
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Geometry helpers. The overlay layer spans the frame, so viewport
+     * coordinates are our coordinate space; only the window chrome band at
+     * the top is reserved.
+     * ------------------------------------------------------------------ */
+
+    function bounds() {
+      const w = typeof globalThis.innerWidth === 'number' && globalThis.innerWidth > 0 ? globalThis.innerWidth : 1280;
+      const hgt = typeof globalThis.innerHeight === 'number' && globalThis.innerHeight > 0 ? globalThis.innerHeight : 800;
+      return { w, h: hgt, top: chromeTop() };
+    }
+
+    function clampAxis(value, low, high) {
+      return Math.min(Math.max(value, low), Math.max(low, high));
+    }
+
+    function fitSize(w, hgt, box) {
+      return {
+        w: clampAxis(w, MIN_W, Math.min(MAX_W, box.w - 16)),
+        h: clampAxis(hgt, MIN_H, Math.min(MAX_H, box.h - box.top - 16))
+      };
+    }
+
+    function fitPos(x, y, w, hgt, box) {
+      return {
+        x: clampAxis(x, 8, box.w - w - 8),
+        y: clampAxis(y, box.top + 8, box.h - hgt - 8)
+      };
+    }
+
+    function nearestEdge(x, y, w, hgt, box) {
+      const candidates = [
+        { edge: 'left', distance: x },
+        { edge: 'right', distance: box.w - (x + w) },
+        { edge: 'top', distance: y - box.top },
+        { edge: 'bottom', distance: box.h - (y + hgt) }
+      ];
+      let best = null;
+      for (const candidate of candidates) {
+        if (candidate.distance <= SNAP && (best === null || candidate.distance < best.distance)) best = candidate;
+      }
+      return best === null ? null : best.edge;
+    }
+
+    function snapTo(edge, x, y, w, hgt, box) {
+      if (edge === 'left') return { x: 0, y };
+      if (edge === 'right') return { x: Math.max(0, box.w - w), y };
+      if (edge === 'top') return { x, y: box.top };
+      return { x, y: Math.max(box.top, box.h - hgt) };
+    }
+
+    function snapRect(edge, x, y, w, hgt, box) {
+      const thickness = 3;
+      if (edge === 'left') return { left: '0px', top: y + 'px', width: thickness + 'px', height: hgt + 'px' };
+      if (edge === 'right') return { left: (box.w - thickness) + 'px', top: y + 'px', width: thickness + 'px', height: hgt + 'px' };
+      if (edge === 'top') return { left: x + 'px', top: (box.top) + 'px', width: w + 'px', height: thickness + 'px' };
+      return { left: x + 'px', top: (box.h - thickness) + 'px', width: w + 'px', height: thickness + 'px' };
     }
 
     /* ------------------------------------------------------------------ *
@@ -300,51 +396,57 @@ window.__ModuleLoader__.load({
       })
     );
 
-    const ChevronUpIcon = (props) => h(
+    const CollapseIcon = (props) => h(
       'svg',
       Object.assign({}, iconProps, props),
       h('path', {
-        d: 'M3.4 10.2 8 5.6l4.6 4.6',
+        d: 'M3.4 3.4 8 8l-4.6 4.6M9.4 3.4 14 8l-4.6 4.6',
         stroke: 'currentColor',
-        strokeWidth: 1.4,
-        strokeLinecap: 'round',
-        strokeLinejoin: 'round'
-      })
-    );
-
-    const ChevronDownIcon = (props) => h(
-      'svg',
-      Object.assign({}, iconProps, props),
-      h('path', {
-        d: 'M3.4 5.8 8 10.4l4.6-4.6',
-        stroke: 'currentColor',
-        strokeWidth: 1.4,
+        strokeWidth: 1.3,
         strokeLinecap: 'round',
         strokeLinejoin: 'round'
       })
     );
 
     /* ------------------------------------------------------------------ *
-     * Dock
+     * Notepad
      * ------------------------------------------------------------------ */
 
-    function NotepadDock(props) {
+    function NotepadCard(props) {
       const t = (key) => (typeof props.t === 'function' ? props.t(key) : (EN[key] !== undefined ? EN[key] : key));
 
       const [boot] = useState(readStored);
       const [text, setText] = useState(boot.text);
+      const [width, setWidth] = useState(boot.width);
       const [height, setHeight] = useState(boot.height);
+      const [pos, setPos] = useState(() => {
+        const box = bounds();
+        const size = fitSize(boot.width, boot.height, box);
+        const start = boot.x === null || boot.y === null
+          ? { x: box.w - size.w - 24, y: box.top + 96 }
+          : { x: boot.x, y: boot.y };
+        const fixed = fitPos(start.x, start.y, size.w, size.h, box);
+        return { x: fixed.x, y: fixed.y };
+      });
       const [collapsed, setCollapsed] = useState(boot.collapsed);
       const [saved, setSaved] = useState(true);
       const [images, setImages] = useState([]);
       const [preview, setPreview] = useState(null);
       const [dragging, setDragging] = useState(false);
+      const [snapEdge, setSnapEdge] = useState(null);
       const [notice, setNotice] = useState('');
 
       const fileRef = useRef(null);
       const dragDepth = useRef(0);
       const firstSave = useRef(true);
+      const livePos = useRef(pos);
+      const moved = useRef(false);
       const urls = useObjectUrls(images);
+
+      const applyPos = useCallback((next) => {
+        livePos.current = next;
+        setPos(next);
+      }, []);
 
       useEffect(() => {
         if (firstSave.current) {
@@ -354,14 +456,21 @@ window.__ModuleLoader__.load({
         setSaved(false);
         const timer = globalThis.setTimeout(() => {
           try {
-            globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify({ text, height, collapsed }));
+            globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+              text,
+              width,
+              height,
+              x: pos.x,
+              y: pos.y,
+              collapsed
+            }));
           } catch (err) {
             /* storage full or unavailable: keep the in-memory state */
           }
           setSaved(true);
         }, 250);
         return () => globalThis.clearTimeout(timer);
-      }, [text, height, collapsed]);
+      }, [text, width, height, pos.x, pos.y, collapsed]);
 
       useEffect(() => {
         let alive = true;
@@ -389,6 +498,20 @@ window.__ModuleLoader__.load({
         globalThis.addEventListener('keydown', onKey, true);
         return () => globalThis.removeEventListener('keydown', onKey, true);
       }, [preview]);
+
+      // Keep the card inside the frame when the window is resized.
+      useEffect(() => {
+        const onResize = () => {
+          const box = bounds();
+          setWidth((prev) => fitSize(prev, height, box).w);
+          setHeight((prev) => fitSize(width, prev, box).h);
+          const size = fitSize(width, height, box);
+          const fixed = fitPos(livePos.current.x, livePos.current.y, size.w, size.h, box);
+          applyPos({ x: fixed.x, y: fixed.y });
+        };
+        globalThis.addEventListener('resize', onResize);
+        return () => globalThis.removeEventListener('resize', onResize);
+      }, [applyPos, width, height]);
 
       const addFiles = useCallback((fileList) => {
         const list = Array.from(fileList || []).filter(
@@ -425,30 +548,82 @@ window.__ModuleLoader__.load({
         deleteImage(id).catch(() => {});
       }, []);
 
-      const onClear = useCallback((event) => {
-        if (event) event.stopPropagation();
-        setText('');
-      }, []);
+      const onClear = useCallback(() => setText(''), []);
 
-      const onResizeStart = useCallback((event) => {
+      /** Pointer drag with a live position ref so release sees the final spot. */
+      const startDrag = useCallback((event, onMove, onEnd) => {
         if (event.button !== 0) return;
         event.preventDefault();
-        event.stopPropagation();
-        setCollapsed(false);
+        moved.current = false;
+        const startX = event.clientX;
         const startY = event.clientY;
-        const startHeight = height;
-        const maxHeight = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, globalThis.innerHeight * 0.7));
-        const onMove = (moveEvent) => {
-          const next = Math.min(maxHeight, Math.max(MIN_HEIGHT, startHeight + (startY - moveEvent.clientY)));
-          setHeight(next);
+        const move = (moveEvent) => {
+          const dx = moveEvent.clientX - startX;
+          const dy = moveEvent.clientY - startY;
+          if (Math.abs(dx) > 4 || Math.abs(dy) > 4) moved.current = true;
+          onMove(dx, dy);
         };
-        const onUp = () => {
-          globalThis.removeEventListener('pointermove', onMove);
-          globalThis.removeEventListener('pointerup', onUp);
+        const up = () => {
+          globalThis.removeEventListener('pointermove', move);
+          globalThis.removeEventListener('pointerup', up);
+          if (onEnd) onEnd();
         };
-        globalThis.addEventListener('pointermove', onMove);
-        globalThis.addEventListener('pointerup', onUp);
-      }, [height]);
+        globalThis.addEventListener('pointermove', move);
+        globalThis.addEventListener('pointerup', up);
+      }, []);
+
+      const dragOrigin = useRef({ x: 0, y: 0 });
+
+      const dragBox = useCallback((dx, dy, w, hgt) => {
+        const box = bounds();
+        const raw = { x: dragOrigin.current.x + dx, y: dragOrigin.current.y + dy };
+        return {
+          pos: {
+            x: clampAxis(raw.x, 8, box.w - w - 8),
+            y: clampAxis(raw.y, box.top + 8, box.h - hgt - 8)
+          },
+          edge: nearestEdge(raw.x, raw.y, w, hgt, box)
+        };
+      }, []);
+
+      const onMoveCard = useCallback((event) => {
+        dragOrigin.current = { x: livePos.current.x, y: livePos.current.y };
+        startDrag(event, (dx, dy) => {
+          const next = dragBox(dx, dy, width, height);
+          applyPos(next.pos);
+          setSnapEdge(next.edge);
+        }, () => {
+          const box = bounds();
+          const target = nearestEdge(livePos.current.x, livePos.current.y, width, height, box);
+          setSnapEdge(null);
+          if (target === null) return;
+          applyPos(snapTo(target, livePos.current.x, livePos.current.y, width, height, box));
+        });
+      }, [applyPos, dragBox, height, startDrag, width]);
+
+      const onMoveTab = useCallback((event) => {
+        dragOrigin.current = { x: livePos.current.x, y: livePos.current.y };
+        startDrag(event, (dx, dy) => {
+          const next = dragBox(dx, dy, TAB, TAB);
+          applyPos(next.pos);
+          setSnapEdge(next.edge);
+        }, () => {
+          const box = bounds();
+          const target = nearestEdge(livePos.current.x, livePos.current.y, TAB, TAB, box);
+          setSnapEdge(null);
+          if (target === null) return;
+          applyPos(snapTo(target, livePos.current.x, livePos.current.y, TAB, TAB, box));
+        });
+      }, [applyPos, dragBox, startDrag]);
+
+      const onResizeCard = useCallback((event) => {
+        const origin = { w: width, h: height };
+        startDrag(event, (dx, dy) => {
+          const box = bounds();
+          setWidth(fitSize(origin.w + dx, origin.h, box).w);
+          setHeight(fitSize(origin.w + dx, origin.h + dy, box).h);
+        });
+      }, [height, startDrag, width]);
 
       const onDragEnter = (event) => {
         if (!event.dataTransfer) return;
@@ -472,7 +647,7 @@ window.__ModuleLoader__.load({
         event.preventDefault();
         dragDepth.current = 0;
         setDragging(false);
-        setCollapsed(false);
+        if (collapsed) setCollapsed(false);
         addFiles(event.dataTransfer.files);
       };
 
@@ -496,155 +671,174 @@ window.__ModuleLoader__.load({
       const status = notice ? t(notice) : (saved ? t('saved') : t('saving'));
       const counter = text.length + ' ' + t('chars')
         + (images.length > 0 ? ' · ' + images.length + ' ' + t('images') : '');
-
-      const heightLimit = typeof globalThis.innerHeight === 'number' && globalThis.innerHeight > 0
-        ? Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, globalThis.innerHeight * 0.7))
-        : MAX_HEIGHT;
-      const dockHeight = collapsed ? BAR_HEIGHT : Math.min(Math.max(height, MIN_HEIGHT), heightLimit);
+      const box = bounds();
+      const cardW = collapsed ? TAB : width;
+      const cardH = collapsed ? TAB : height;
+      const indicator = snapEdge === null ? null : snapRect(snapEdge, pos.x, pos.y, cardW, cardH, box);
 
       return h(
-        'div',
-        {
-          className: 'dsh-notepad-dock',
-          style: { height: dockHeight + 'px' },
-          onDragEnter,
-          onDragOver,
-          onDragLeave,
-          onDrop,
-          onPaste
-        },
-        h('div', {
-          className: 'dsh-notepad-dock__grip',
-          onPointerDown: onResizeStart,
-          title: t('resize'),
-          'aria-hidden': 'true'
-        }),
-        h(
-          'div',
-          {
-            className: 'dsh-notepad-dock__head',
-            onClick: () => setCollapsed((prev) => !prev),
-            title: collapsed ? t('expand') : t('collapse')
-          },
-          h(NoteIcon, { className: 'dsh-notepad-dock__headIcon' }),
-          h('span', { className: 'dsh-notepad-dock__title' }, t('title')),
-          h(
-            'span',
-            {
-              className: 'dsh-notepad-dock__meta'
-                + (notice ? ' dsh-notepad-dock__meta--notice' : '')
-            },
-            status + ' · ' + counter
-          ),
-          h(
-            'button',
-            {
-              type: 'button',
-              className: 'dsh-notepad-dock__btn',
-              onClick: (event) => {
-                event.stopPropagation();
-                if (fileRef.current) fileRef.current.click();
-              },
-              title: t('addImage'),
-              'aria-label': t('addImage')
-            },
-            h(ImagePlusIcon)
-          ),
-          h(
-            'button',
-            {
-              type: 'button',
-              className: 'dsh-notepad-dock__btn',
-              onClick: onClear,
-              title: t('clear'),
-              'aria-label': t('clear')
-            },
-            h(ClearIcon)
-          ),
-          h(
-            'button',
-            {
-              type: 'button',
-              className: 'dsh-notepad-dock__btn',
-              onClick: (event) => {
-                event.stopPropagation();
-                setCollapsed((prev) => !prev);
-              },
-              title: collapsed ? t('expand') : t('collapse'),
-              'aria-label': collapsed ? t('expand') : t('collapse'),
-              'aria-expanded': !collapsed
-            },
-            collapsed ? h(ChevronUpIcon) : h(ChevronDownIcon)
-          )
-        ),
+        React.Fragment,
+        null,
+        indicator === null ? null : h('div', { className: 'dsh-notepad-snap', style: indicator }),
         collapsed
-          ? null
+          ? h(
+            'div',
+            {
+              className: 'dsh-notepad-tab',
+              style: { left: pos.x + 'px', top: pos.y + 'px', width: TAB + 'px', height: TAB + 'px' },
+              onPointerDown: onMoveTab,
+              onClick: () => {
+                if (moved.current) return;
+                setCollapsed(false);
+              },
+              role: 'button',
+              tabIndex: 0,
+              onKeyDown: (event) => {
+                if (event.key === 'Enter' || event.key === ' ') setCollapsed(false);
+              },
+              title: t('expand'),
+              'aria-label': t('expand')
+            },
+            h(NoteIcon, { width: 15, height: 15 })
+          )
           : h(
             'div',
-            { className: 'dsh-notepad-dock__body' },
-            h('textarea', {
-              className: 'dsh-notepad-dock__editor',
-              value: text,
-              placeholder: t('placeholder'),
-              spellCheck: false,
-              onChange: (event) => setText(event.target.value)
+            {
+              className: 'dsh-notepad-card',
+              style: { left: pos.x + 'px', top: pos.y + 'px', width: width + 'px', height: height + 'px' },
+              onDragEnter,
+              onDragOver,
+              onDragLeave,
+              onDrop,
+              onPaste
+            },
+            h(
+              'div',
+              {
+                className: 'dsh-notepad-card__head',
+                onPointerDown: onMoveCard,
+                title: t('move')
+              },
+              h(NoteIcon, { className: 'dsh-notepad-card__headIcon' }),
+              h('span', { className: 'dsh-notepad-card__title' }, t('title')),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dsh-notepad-card__btn',
+                  onClick: (event) => {
+                    event.stopPropagation();
+                    if (fileRef.current) fileRef.current.click();
+                  },
+                  onPointerDown: (event) => event.stopPropagation(),
+                  title: t('addImage'),
+                  'aria-label': t('addImage')
+                },
+                h(ImagePlusIcon)
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dsh-notepad-card__btn',
+                  onClick: (event) => {
+                    event.stopPropagation();
+                    onClear();
+                  },
+                  onPointerDown: (event) => event.stopPropagation(),
+                  title: t('clear'),
+                  'aria-label': t('clear')
+                },
+                h(ClearIcon)
+              ),
+              h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'dsh-notepad-card__btn',
+                  onClick: (event) => {
+                    event.stopPropagation();
+                    setCollapsed(true);
+                  },
+                  onPointerDown: (event) => event.stopPropagation(),
+                  title: t('collapse'),
+                  'aria-label': t('collapse')
+                },
+                h(CollapseIcon)
+              )
+            ),
+            h(
+              'div',
+              { className: 'dsh-notepad-card__body' },
+              h('textarea', {
+                className: 'dsh-notepad-card__editor',
+                value: text,
+                placeholder: t('placeholder'),
+                spellCheck: false,
+                onChange: (event) => setText(event.target.value)
+              }),
+              images.length > 0
+                ? h(
+                  'div',
+                  { className: 'dsh-notepad-card__media' },
+                  images.map((image) => h(
+                    'div',
+                    { key: image.id, className: 'dsh-notepad-card__thumb' },
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dsh-notepad-card__thumbOpen',
+                        onClick: () => setPreview(image.id),
+                        title: image.name
+                      },
+                      urls[image.id] ? h('img', { src: urls[image.id], alt: image.name, draggable: false }) : null
+                    ),
+                    h(
+                      'button',
+                      {
+                        type: 'button',
+                        className: 'dsh-notepad-card__thumbRemove',
+                        onClick: () => removeImage(image.id),
+                        title: t('removeImage'),
+                        'aria-label': t('removeImage')
+                      },
+                      h(CloseIcon, { width: 12, height: 12 })
+                    )
+                  ))
+                )
+                : null
+            ),
+            h(
+              'div',
+              { className: 'dsh-notepad-card__foot' },
+              h(
+                'span',
+                { className: 'dsh-notepad-card__state' + (notice ? ' dsh-notepad-card__state--notice' : '') },
+                status
+              ),
+              h('span', null, counter)
+            ),
+            h('div', {
+              className: 'dsh-notepad-card__grip',
+              onPointerDown: onResizeCard,
+              title: t('resize'),
+              'aria-hidden': 'true'
             }),
-            images.length > 0
+            dragging
               ? h(
                 'div',
-                { className: 'dsh-notepad-dock__media' },
-                images.map((image) => h(
-                  'div',
-                  { key: image.id, className: 'dsh-notepad-dock__thumb' },
-                  h(
-                    'button',
-                    {
-                      type: 'button',
-                      className: 'dsh-notepad-dock__thumbOpen',
-                      onClick: () => setPreview(image.id),
-                      title: image.name
-                    },
-                    urls[image.id] ? h('img', { src: urls[image.id], alt: image.name, draggable: false }) : null
-                  ),
-                  h(
-                    'button',
-                    {
-                      type: 'button',
-                      className: 'dsh-notepad-dock__thumbRemove',
-                      onClick: () => removeImage(image.id),
-                      title: t('removeImage'),
-                      'aria-label': t('removeImage')
-                    },
-                    h(CloseIcon, { width: 12, height: 12 })
-                  )
-                ))
+                { className: 'dsh-notepad-card__drop' },
+                h(ImagePlusIcon, { width: 22, height: 22 }),
+                h('span', null, t('dropHint'))
               )
               : null
           ),
-        h('input', {
-          ref: fileRef,
-          type: 'file',
-          accept: 'image/*',
-          multiple: true,
-          style: { display: 'none' },
-          onChange: (event) => {
-            addFiles(event.target.files);
-            event.target.value = '';
-          }
-        }),
-        dragging && !collapsed
-          ? h(
-            'div',
-            { className: 'dsh-notepad-dock__drop' },
-            h(ImagePlusIcon, { width: 22, height: 22 }),
-            h('span', null, t('dropHint'))
-          )
-          : null,
         previewImage
           ? h(
             'div',
             {
-              className: 'dsh-notepad-dock__preview',
+              className: 'dsh-notepad-card__preview',
               onClick: () => setPreview(null),
               role: 'presentation'
             },
@@ -655,7 +849,7 @@ window.__ModuleLoader__.load({
               'button',
               {
                 type: 'button',
-                className: 'dsh-notepad-dock__previewClose',
+                className: 'dsh-notepad-card__previewClose',
                 onClick: (event) => {
                   event.stopPropagation();
                   setPreview(null);
@@ -666,7 +860,18 @@ window.__ModuleLoader__.load({
               h(CloseIcon)
             )
           )
-          : null
+          : null,
+        h('input', {
+          ref: fileRef,
+          type: 'file',
+          accept: 'image/*',
+          multiple: true,
+          style: { display: 'none' },
+          onChange: (event) => {
+            addFiles(event.target.files);
+            event.target.value = '';
+          }
+        })
       );
     }
 
@@ -701,11 +906,12 @@ window.__ModuleLoader__.load({
           'notepad: locale dictionaries'
         );
 
-        ctx.slots.inject('shell.bottom', () => ctx.slots.register({
-          name: 'shell.bottom',
+        ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+          name: 'shell.overlay',
           id: 'dsh-notepad',
+          order: 100,
           locale: NS
-        }, NotepadDock));
+        }, NotepadCard));
       }
     };
   }
