@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-notepad",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "private": true,
   "type": "module",
   "description": "Floating notepad card for the Harness Web UI that snaps to any of the four edges, with image attachments.",

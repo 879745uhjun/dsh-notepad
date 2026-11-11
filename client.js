@@ -104,6 +104,12 @@ window.__ModuleLoader__.load({
       '.dsh-notepad-card__foot{flex:none;height:26px;padding:0 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;',
       'box-sizing:border-box;border-top:.5px solid var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:16px}',
       '.dsh-notepad-card__state--notice{color:var(--dsw-alias-state-error-primary)}',
+      '.dsh-notepad-card__edge{position:absolute;z-index:3;touch-action:none}',
+      '.dsh-notepad-card__edge--left{left:0;top:12px;bottom:12px;width:6px;cursor:ew-resize}',
+      '.dsh-notepad-card__edge--right{right:0;top:12px;bottom:12px;width:6px;cursor:ew-resize}',
+      '.dsh-notepad-card__edge--top{top:0;left:12px;right:12px;height:6px;cursor:ns-resize}',
+      '.dsh-notepad-card__edge--bottom{bottom:0;left:12px;right:12px;height:6px;cursor:ns-resize}',
+      '.dsh-notepad-card__edge:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.dsh-notepad-card__grip{position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;z-index:4;',
       'touch-action:none;background:linear-gradient(135deg,transparent 46%,var(--dsw-alias-border-l3) 46%)}',
       '.dsh-notepad-card__drop{position:absolute;inset:6px;z-index:5;display:flex;flex-direction:column;gap:10px;align-items:center;',
@@ -440,6 +446,7 @@ window.__ModuleLoader__.load({
       const dragDepth = useRef(0);
       const firstSave = useRef(true);
       const livePos = useRef(pos);
+      const liveSize = useRef({ w: boot.width, h: boot.height });
       const moved = useRef(false);
       const urls = useObjectUrls(images);
 
@@ -503,8 +510,10 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         const onResize = () => {
           const box = bounds();
-          setWidth((prev) => fitSize(prev, height, box).w);
-          setHeight((prev) => fitSize(width, prev, box).h);
+          const resized = fitSize(liveSize.current.w, liveSize.current.h, box);
+          liveSize.current = resized;
+          setWidth(resized.w);
+          setHeight(resized.h);
           const size = fitSize(width, height, box);
           const fixed = fitPos(livePos.current.x, livePos.current.y, size.w, size.h, box);
           applyPos({ x: fixed.x, y: fixed.y });
@@ -617,13 +626,50 @@ window.__ModuleLoader__.load({
       }, [applyPos, dragBox, startDrag]);
 
       const onResizeCard = useCallback((event) => {
-        const origin = { w: width, h: height };
+        const origin = { w: liveSize.current.w, h: liveSize.current.h };
         startDrag(event, (dx, dy) => {
           const box = bounds();
-          setWidth(fitSize(origin.w + dx, origin.h, box).w);
-          setHeight(fitSize(origin.w + dx, origin.h + dy, box).h);
+          const next = fitSize(origin.w + dx, origin.h + dy, box);
+          liveSize.current = next;
+          setWidth(next.w);
+          setHeight(next.h);
         });
-      }, [height, startDrag, width]);
+      }, [startDrag]);
+
+      /* Every edge resizes: the opposite edge stays put, so dragging left or top
+         also moves the card. Collapsing at a limit keeps the far edge anchored. */
+      const onEdgeResize = useCallback((event, side) => {
+        const originPos = { x: livePos.current.x, y: livePos.current.y };
+        const origin = { w: liveSize.current.w, h: liveSize.current.h };
+        const rightEdge = originPos.x + origin.w;
+        const bottomEdge = originPos.y + origin.h;
+        startDrag(event, (dx, dy) => {
+          const box = bounds();
+          const rawW = side === 'left' ? origin.w - dx : origin.w + dx;
+          const rawH = side === 'top' ? origin.h - dy : origin.h + dy;
+          let next = fitSize(rawW, rawH, box);
+          let x = originPos.x;
+          let y = originPos.y;
+          if (side === 'left') {
+            x = rightEdge - next.w;
+            if (x < 8) {
+              next = fitSize(rightEdge - 8, next.h, box);
+              x = 8;
+            }
+          }
+          if (side === 'top') {
+            y = bottomEdge - next.h;
+            if (y < box.top + 8) {
+              next = fitSize(next.w, bottomEdge - box.top - 8, box);
+              y = box.top + 8;
+            }
+          }
+          liveSize.current = next;
+          setWidth(next.w);
+          setHeight(next.h);
+          if (side === 'left' || side === 'top') applyPos({ x, y });
+        });
+      }, [applyPos, startDrag]);
 
       const onDragEnter = (event) => {
         if (!event.dataTransfer) return;
@@ -819,6 +865,30 @@ window.__ModuleLoader__.load({
               ),
               h('span', null, counter)
             ),
+            h('div', {
+              className: 'dsh-notepad-card__edge dsh-notepad-card__edge--left',
+              onPointerDown: (event) => onEdgeResize(event, 'left'),
+              title: t('resize'),
+              'aria-hidden': 'true'
+            }),
+            h('div', {
+              className: 'dsh-notepad-card__edge dsh-notepad-card__edge--right',
+              onPointerDown: (event) => onEdgeResize(event, 'right'),
+              title: t('resize'),
+              'aria-hidden': 'true'
+            }),
+            h('div', {
+              className: 'dsh-notepad-card__edge dsh-notepad-card__edge--top',
+              onPointerDown: (event) => onEdgeResize(event, 'top'),
+              title: t('resize'),
+              'aria-hidden': 'true'
+            }),
+            h('div', {
+              className: 'dsh-notepad-card__edge dsh-notepad-card__edge--bottom',
+              onPointerDown: (event) => onEdgeResize(event, 'bottom'),
+              title: t('resize'),
+              'aria-hidden': 'true'
+            }),
             h('div', {
               className: 'dsh-notepad-card__grip',
               onPointerDown: onResizeCard,
