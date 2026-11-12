@@ -1,9 +1,29 @@
 {
-  "name": "@local/dsh-notepad",
+  "name": "dsh-notepad-card",
   "version": "4.0.0",
-  "private": true,
   "type": "module",
-  "description": "Notepad for the Harness Web UI: floating, edge-snapping card or a real bottom dock row, switchable at runtime.",
+  "description": "Notepad for the Harness Web UI: a floating, edge-snapping card or a real bottom dock row, plus text and image notes, switchable at runtime.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "notepad",
+    "notes",
+    "dock"
+  ],
+  "author": "879745uhjun",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/879745uhjun/dsh-notepad.git"
+  },
+  "homepage": "https://github.com/879745uhjun/dsh-notepad#readme",
+  "bugs": {
+    "url": "https://github.com/879745uhjun/dsh-notepad/issues"
+  },
+  "engines": {
+    "dsh": ">=0.2.2-rc.1 <0.3.0"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -15,7 +35,9 @@
     "client.js",
     "cordis.patch.yml",
     "locale/*.json",
-    "icon.svg"
+    "icon.svg",
+    "README.md",
+    "LICENSE"
   ],
   "dsh": {
     "bundle": {

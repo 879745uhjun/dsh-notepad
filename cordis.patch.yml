@@ -1,3 +1,3 @@
 - insert:
     - id: dsh-notepad
-      name: '@local/dsh-notepad'
+      name: 'dsh-notepad-card'

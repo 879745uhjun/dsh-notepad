@@ -14,7 +14,7 @@
  * Client locale service.
  */
 window.__ModuleLoader__.load({
-  id: '@local/dsh-notepad',
+  id: 'dsh-notepad-card',
   factory(require) {
     const React = require('react');
     const h = React.createElement;
@@ -1485,7 +1485,7 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         ctx.effect(() => {
           const style = document.createElement('style');
-          style.setAttribute('data-plugin-css', '@local/dsh-notepad/Notepad.module.css');
+          style.setAttribute('data-plugin-css', 'dsh-notepad-card/Notepad.module.css');
           style.textContent = CSS;
           document.head.appendChild(style);
           return () => {

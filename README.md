@@ -26,6 +26,16 @@
 
 ## 安装
 
+### 从 GitHub 安装
+
+```sh
+dsh plugin --profile desktop add github:879745uhjun/dsh-notepad
+```
+
+装好后刷新 Web 页面即可看到卡片。
+
+### 从本地目录安装
+
 在已安装 DSH 的 profile 中用插件管理器安装本目录：
 
 ```
