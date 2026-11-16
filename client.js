@@ -72,6 +72,9 @@ window.__ModuleLoader__.load({
       'todosLabel': 'List',
       'todosHint': 'List every - [ ] item in the note',
       'todoEmpty': 'No to-dos yet — use the To-do button to add one on the current line.',
+      'renumber': 'Renumber',
+      'renumberHint': 'Rewrite every numbered line as 1, 2, 3 … per indent level',
+      'clearDone': 'Remove done',
       'toFloat': 'Detach as a floating card'
     };
 
@@ -101,6 +104,9 @@ window.__ModuleLoader__.load({
       'todosLabel': '清单',
       'todosHint': '列出笔记里所有 - [ ] 待办',
       'todoEmpty': '还没有待办——用上面的「待办」按钮在当前行加一条。',
+      'renumber': '重新编号',
+      'renumberHint': '把所有编号行按缩进分组重排成 1、2、3…',
+      'clearDone': '清除已完成',
       'toFloat': '脱离为悬浮卡片'
     };
 
@@ -191,7 +197,11 @@ window.__ModuleLoader__.load({
       '.dsh-notepad-pop__box{flex:none;width:14px;height:14px;margin-top:3px;border-radius:3px;border:1px solid var(--dsw-alias-border-l4);',
       'display:inline-flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-primary-inverted)}',
       '.dsh-notepad-pop__row.is-done .dsh-notepad-pop__box{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}',
-      '.dsh-notepad-pop__label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+      '.dsh-notepad-pop__label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.dsh-notepad-pop__foot{margin-top:4px;padding:6px 8px;border:none;border-top:.5px solid var(--dsw-alias-border-l3);',
+      'background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12px;line-height:18px;',
+      'text-align:left;cursor:pointer}',
+      '.dsh-notepad-pop__foot:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}'
     ].join('');
 
     const DOCK_CSS = [
@@ -430,6 +440,42 @@ window.__ModuleLoader__.load({
       const done = match[2].toLowerCase() === 'x';
       lines[lineIndex] = match[1] + '- [' + (done ? ' ' : 'x') + '] ' + line.slice(match[0].length);
       return lines.join('\n');
+    }
+
+    /** Renumber every numbered line, one counter per indent level. */
+    function renumberAll(text) {
+      const lines = text.split('\n');
+      const counters = new Map();
+      let changed = false;
+      for (let index = 0; index < lines.length; index += 1) {
+        const match = RE_NUMBER.exec(lines[index]);
+        if (match === null) continue;
+        const indent = match[1];
+        const next = (counters.get(indent) || 0) + 1;
+        counters.set(indent, next);
+        const rebuilt = indent + next + match[3] + match[4] + lines[index].slice(match[0].length);
+        if (rebuilt !== lines[index]) {
+          lines[index] = rebuilt;
+          changed = true;
+        }
+      }
+      return changed ? lines.join('\n') : null;
+    }
+
+    /** Drop every ticked to-do line. */
+    function clearDoneTodos(text) {
+      const lines = text.split('\n');
+      const kept = [];
+      let removed = 0;
+      for (const line of lines) {
+        const match = RE_TODO.exec(line);
+        if (match !== null && match[2].toLowerCase() === 'x') {
+          removed += 1;
+          continue;
+        }
+        kept.push(line);
+      }
+      return removed === 0 ? null : { text: kept.join('\n'), removed };
     }
 
     /** Enter continuation. Returns null when the browser default should win. */
@@ -799,7 +845,25 @@ window.__ModuleLoader__.load({
         if (next !== null) store.setText(next);
       }, []);
 
-      return { editorRef, onKeyDown, toggleNumbering, insertTodo, toggleTodoLine };
+      const renumber = useCallback(() => {
+        const next = renumberAll(store.state.text);
+        if (next !== null) store.setText(next);
+      }, []);
+
+      const clearDone = useCallback(() => {
+        const result = clearDoneTodos(store.state.text);
+        if (result !== null) store.setText(result.text);
+      }, []);
+
+      return {
+        editorRef,
+        onKeyDown,
+        toggleNumbering,
+        insertTodo,
+        toggleTodoLine,
+        renumber,
+        clearDone
+      };
     }
 
     function NoteControls(props) {
@@ -838,6 +902,21 @@ window.__ModuleLoader__.load({
           h(TodoIcon, null),
           t('insertTodo')
         ),
+        props.numbering
+          ? h(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh-notepad-bar__btn',
+              onClick: (event) => {
+                event.stopPropagation();
+                props.onRenumber(event);
+              },
+              title: t('renumberHint')
+            },
+            t('renumber')
+          )
+          : null,
         h(
           'button',
           {
@@ -878,7 +957,14 @@ window.__ModuleLoader__.load({
               },
               h('span', { className: 'dsh-notepad-pop__box' }, item.done ? h(CheckIcon, { width: 10, height: 10 }) : null),
               h('span', { className: 'dsh-notepad-pop__label' }, item.label === '' ? '—' : item.label)
-            ))
+            )),
+          props.done > 0
+            ? h(
+              'button',
+              { type: 'button', className: 'dsh-notepad-pop__foot', onClick: props.onClearDone },
+              t('clearDone') + ' · ' + props.done
+            )
+            : null
         )
       );
     }
@@ -1035,7 +1121,7 @@ window.__ModuleLoader__.load({
       const dragOrigin = useRef({ x: 0, y: 0 });
       const { start: startDrag, moved } = useDrag();
       const { notice, addFiles, removeImage } = useImageIntake();
-      const { editorRef, onKeyDown, toggleNumbering, insertTodo, toggleTodoLine } = useEditorTools(shared);
+      const { editorRef, onKeyDown, toggleNumbering, insertTodo, toggleTodoLine, renumber, clearDone } = useEditorTools(shared);
       const todos = parseTodos(shared.text);
       const [todoAnchor, setTodoAnchor] = useState(null);
       const openTodos = useCallback((event) => {
@@ -1263,7 +1349,9 @@ window.__ModuleLoader__.load({
           t,
           anchor: todoAnchor,
           todos,
+          done: todos.filter((item) => item.done).length,
           onToggle: toggleTodoLine,
+          onClearDone: clearDone,
           onClose: () => setTodoAnchor(null)
         }),
         peek !== null
@@ -1392,7 +1480,8 @@ window.__ModuleLoader__.load({
                 todosOpen: todoAnchor !== null,
                 onNumbering: toggleNumbering,
                 onInsertTodo: insertTodo,
-                onOpenTodos: openTodos
+                onOpenTodos: openTodos,
+                onRenumber: renumber
               }),
               h(
                 'div',
@@ -1547,7 +1636,7 @@ window.__ModuleLoader__.load({
       const liveHeight = useRef(boot.dockHeight);
       const { start: startDrag } = useDrag();
       const { notice, addFiles, removeImage } = useImageIntake();
-      const { editorRef, onKeyDown, toggleNumbering, insertTodo, toggleTodoLine } = useEditorTools(shared);
+      const { editorRef, onKeyDown, toggleNumbering, insertTodo, toggleTodoLine, renumber, clearDone } = useEditorTools(shared);
       const todos = parseTodos(shared.text);
       const [todoAnchor, setTodoAnchor] = useState(null);
       const openTodos = useCallback((event) => {
@@ -1652,7 +1741,9 @@ window.__ModuleLoader__.load({
           t,
           anchor: todoAnchor,
           todos,
+          done: todos.filter((item) => item.done).length,
           onToggle: toggleTodoLine,
+          onClearDone: clearDone,
           onClose: () => setTodoAnchor(null)
         }),
         h(
@@ -1694,7 +1785,8 @@ window.__ModuleLoader__.load({
               todosOpen: todoAnchor !== null,
               onNumbering: toggleNumbering,
               onInsertTodo: insertTodo,
-              onOpenTodos: openTodos
+              onOpenTodos: openTodos,
+              onRenumber: renumber
             }),
             h(
               'button',
