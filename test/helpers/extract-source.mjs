@@ -25,7 +25,16 @@ export function extractConst(source, name) {
   return source.slice(start, end);
 }
 
-/** A `function name(...) { ... }` declaration, sliced by brace matching. */
+const QUOTES = new Set(['"', "'", '`']);
+
+/**
+ * A `function name(...) { ... }` declaration, sliced by brace matching.
+ *
+ * String and template literals, line comments and block comments are skipped, so a
+ * `}` inside `'...'` or a `// }` no longer truncates the slice. Regex literals are
+ * NOT understood — a `/}/` inside a function body would still confuse the scan; keep
+ * such patterns in module-level consts (the plugin does).
+ */
 export function extractFunction(source, name) {
   const marker = `function ${name}(`;
   const start = source.indexOf(marker);
@@ -33,15 +42,45 @@ export function extractFunction(source, name) {
 
   let index = source.indexOf('{', source.indexOf('(', start));
   if (index < 0) throw new Error(`no body for ${name}()`);
+
   let depth = 0;
+  let quote = null;
   for (; index < source.length; index += 1) {
     const char = source[index];
+
+    if (quote !== null) {
+      if (char === '\\') {
+        index += 1;
+        continue;
+      }
+      if (char === quote) quote = null;
+      continue;
+    }
+
+    if (QUOTES.has(char)) {
+      quote = char;
+      continue;
+    }
+
+    if (char === '/' && source[index + 1] === '/') {
+      const lineEnd = source.indexOf('\n', index);
+      index = lineEnd < 0 ? source.length : lineEnd;
+      continue;
+    }
+
+    if (char === '/' && source[index + 1] === '*') {
+      const blockEnd = source.indexOf('*/', index + 2);
+      index = blockEnd < 0 ? source.length : blockEnd + 1;
+      continue;
+    }
+
     if (char === '{') depth += 1;
     else if (char === '}') {
       depth -= 1;
       if (depth === 0) return source.slice(start, index + 1);
     }
   }
+
   throw new Error(`unbalanced braces in ${name}()`);
 }
 

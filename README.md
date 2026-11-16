@@ -85,9 +85,10 @@ npm test        # 等价于 node --test "test/**/*.test.mjs"（Node 24 下不能
 | --- | --- |
 | `test/lines.test.mjs` | 编号续号 `continueLine`、`startTodo`、`toggleTodoAt`、`parseTodos`、`clearDoneTodos`、`renumberAll` |
 | `test/snap.test.mjs` | 吸附取边 `nearestEdge`、`snapTo`（四边、阈值边界、平局、标题栏偏移） |
-| `test/helpers/extract-source.mjs` | 按名字从源码切片并求值，缺函数即失败 |
+| `test/extract-source.test.mjs` | 切片器自身：字符串/模板/注释里的 `{``}` 不会截断、缺函数报错、括号不配对报错 |
+| `test/helpers/extract-source.mjs` | 按名字从源码切片并求值（引号与注释感知），缺函数即失败 |
 
-共 22 个用例，零依赖。**故意把 `SNAP` 从 64 改成 40 时，正好两个阈值用例失败**，说明断言真的咬住了实现。
+共 27 个用例，零依赖。**故意把 `SNAP` 从 64 改成 40 时，正好两个阈值用例失败**，说明断言真的咬住了实现。
 
 **没覆盖的部分**（都不是纯函数）：吸附的“松手释放判定” `settle()`（读 `livePos` ref 与 `bounds()` 里的 `innerWidth`／`getComputedStyle`）、拖拽与四边缩放的指针流程、光标相关逻辑（`selectionStart`／`scrollTop`）、IndexedDB 图片存储、canvas 压缩与 `ClipboardItem`、以及两个界面的 React 渲染。要测这些得引入 DOM/IDB 模拟环境；下一步最小改法是把 `settle()` 的决策抽成纯函数 `resolveRelease(pos, size, box)`。
 
