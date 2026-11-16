@@ -65,6 +65,13 @@ window.__ModuleLoader__.load({
       'closePreview': 'Close preview',
       'imageError': 'Could not add that image',
       'toDock': 'Dock to the bottom row',
+      'numbering': 'Number',
+      'numberingHint': 'Auto numbering: Enter continues the list, an empty item ends it',
+      'insertTodo': 'To-do',
+      'insertTodoHint': 'Turn the current line into a to-do, or tick it',
+      'todosLabel': 'List',
+      'todosHint': 'List every - [ ] item in the note',
+      'todoEmpty': 'No to-dos yet — use the To-do button to add one on the current line.',
       'toFloat': 'Detach as a floating card'
     };
 
@@ -87,6 +94,13 @@ window.__ModuleLoader__.load({
       'closePreview': '关闭预览',
       'imageError': '这张图片添加失败',
       'toDock': '停靠到底部栏',
+      'numbering': '编号',
+      'numberingHint': '自动编号：回车续号，空行结束',
+      'insertTodo': '待办',
+      'insertTodoHint': '把当前行变成待办，已勾选则取消',
+      'todosLabel': '清单',
+      'todosHint': '列出笔记里所有 - [ ] 待办',
+      'todoEmpty': '还没有待办——用上面的「待办」按钮在当前行加一条。',
       'toFloat': '脱离为悬浮卡片'
     };
 
@@ -155,7 +169,29 @@ window.__ModuleLoader__.load({
       '.dsh-notepad-peek--left{border-left:none;border-radius:0 var(--dsw-radius-md) var(--dsw-radius-md) 0}',
       '.dsh-notepad-peek--right{border-right:none;border-radius:var(--dsw-radius-md) 0 0 var(--dsw-radius-md)}',
       '.dsh-notepad-peek--top{border-top:none;border-radius:0 0 var(--dsw-radius-md) var(--dsw-radius-md)}',
-      '.dsh-notepad-peek--bottom{border-bottom:none;border-radius:var(--dsw-radius-md) var(--dsw-radius-md) 0 0}'
+      '.dsh-notepad-peek--bottom{border-bottom:none;border-radius:var(--dsw-radius-md) var(--dsw-radius-md) 0 0}',
+      '.dsh-notepad-bar{flex:none;display:flex;align-items:center;gap:4px;height:30px;padding:0 8px;box-sizing:border-box;',
+      'border-bottom:.5px solid var(--dsw-alias-border-l3)}',
+      '.dsh-notepad-bar--inline{height:auto;padding:0;border-bottom:none;gap:2px}',
+      '.dsh-notepad-bar__btn{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border:none;',
+      'border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-secondary);',
+      'font-family:inherit;font-size:12px;line-height:18px;cursor:pointer;white-space:nowrap}',
+      '.dsh-notepad-bar__btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
+      '.dsh-notepad-bar__btn.is-on{background:var(--dsw-alias-interactive-bg-active);color:var(--dsw-alias-label-primary)}',
+      '.dsh-notepad-veil{position:fixed;inset:0;z-index:1000}',
+      '.dsh-notepad-pop{position:fixed;z-index:1001;width:288px;max-height:320px;overflow:auto;padding:6px;box-sizing:border-box;',
+      'display:flex;flex-direction:column;gap:2px;background:var(--dsw-alias-bg-layer-2);border:.5px solid var(--dsw-alias-border-l3);',
+      'border-radius:var(--dsw-radius-md);box-shadow:var(--dsw-elevation-prominent);',
+      '--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}',
+      '.dsh-notepad-pop__empty{padding:10px 8px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}',
+      '.dsh-notepad-pop__row{display:flex;align-items:flex-start;gap:8px;padding:5px 6px;border:none;border-radius:var(--dsw-radius-sm);',
+      'background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;line-height:20px;text-align:left;cursor:pointer}',
+      '.dsh-notepad-pop__row:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.dsh-notepad-pop__row.is-done{color:var(--dsw-alias-label-dimmed);text-decoration:line-through}',
+      '.dsh-notepad-pop__box{flex:none;width:14px;height:14px;margin-top:3px;border-radius:3px;border:1px solid var(--dsw-alias-border-l4);',
+      'display:inline-flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-primary-inverted)}',
+      '.dsh-notepad-pop__row.is-done .dsh-notepad-pop__box{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}',
+      '.dsh-notepad-pop__label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
     ].join('');
 
     const DOCK_CSS = [
@@ -209,7 +245,7 @@ window.__ModuleLoader__.load({
      * ------------------------------------------------------------------ */
 
     const store = {
-      state: { text: '', images: [], mode: MODE_FLOAT, saved: true },
+      state: { text: '', images: [], mode: MODE_FLOAT, saved: true, flags: { number: false } },
       listeners: new Set(),
       loaded: false,
       saving: null,
@@ -229,7 +265,8 @@ window.__ModuleLoader__.load({
           text: typeof this.boot.text === 'string' ? this.boot.text : '',
           images: [],
           mode: this.boot.mode === MODE_DOCK ? MODE_DOCK : MODE_FLOAT,
-          saved: true
+          saved: true,
+          flags: { number: this.boot.numbering === true }
         };
         loadImages()
           .then((rows) => {
@@ -267,6 +304,11 @@ window.__ModuleLoader__.load({
       },
       setImages(images) {
         this.state = { ...this.state, images };
+        this.emit();
+      },
+      setNumbering(number) {
+        this.state = { ...this.state, flags: { ...this.state.flags, number } };
+        this.write({ numbering: number });
         this.emit();
       },
       setMode(mode) {
@@ -344,6 +386,107 @@ window.__ModuleLoader__.load({
 
     function clampAxis(value, low, high) {
       return Math.min(Math.max(value, low), Math.max(low, high));
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Line tools: auto numbering and to-dos.
+     * A numbered item is "12. " / "12) "; a to-do is "- [ ] " / "- [x] ".
+     * ------------------------------------------------------------------ */
+
+    const RE_NUMBER = /^(\s*)(\d+)([.)])(\s+)/;
+    const RE_TODO = /^(\s*)- \[([ xX])\]( +)?/;
+
+    function lineStartAt(text, caret) {
+      return text.lastIndexOf('\n', Math.max(0, caret - 1)) + 1;
+    }
+
+    function lineEndAt(text, start) {
+      const end = text.indexOf('\n', start);
+      return end === -1 ? text.length : end;
+    }
+
+    function parseTodos(text) {
+      const lines = text.split('\n');
+      const items = [];
+      for (let index = 0; index < lines.length; index += 1) {
+        const match = RE_TODO.exec(lines[index]);
+        if (match === null) continue;
+        items.push({
+          line: index,
+          indent: match[1],
+          done: match[2].toLowerCase() === 'x',
+          label: lines[index].slice(match[0].length).trim()
+        });
+      }
+      return items;
+    }
+
+    function toggleTodoAt(text, lineIndex) {
+      const lines = text.split('\n');
+      if (lineIndex < 0 || lineIndex >= lines.length) return null;
+      const line = lines[lineIndex];
+      const match = RE_TODO.exec(line);
+      if (match === null) return null;
+      const done = match[2].toLowerCase() === 'x';
+      lines[lineIndex] = match[1] + '- [' + (done ? ' ' : 'x') + '] ' + line.slice(match[0].length);
+      return lines.join('\n');
+    }
+
+    /** Enter continuation. Returns null when the browser default should win. */
+    function continueLine(text, caret, autoNumber) {
+      const start = lineStartAt(text, caret);
+      const line = text.slice(start, caret);
+      const todo = RE_TODO.exec(line);
+      if (todo !== null) {
+        if (line.slice(todo[0].length).trim() === '') {
+          return { text: text.slice(0, start) + todo[1] + text.slice(caret), caret: start + todo[1].length };
+        }
+        const insert = '\n' + todo[1] + '- [ ] ';
+        return { text: text.slice(0, caret) + insert + text.slice(caret), caret: caret + insert.length };
+      }
+      if (!autoNumber) return null;
+      const numbered = RE_NUMBER.exec(line);
+      if (numbered === null) return null;
+      if (line.slice(numbered[0].length).trim() === '') {
+        return { text: text.slice(0, start) + numbered[1] + text.slice(caret), caret: start + numbered[1].length };
+      }
+      const insert = '\n' + numbered[1] + (Number(numbered[2]) + 1) + numbered[3] + ' ';
+      return { text: text.slice(0, caret) + insert + text.slice(caret), caret: caret + insert.length };
+    }
+
+    /** Turn the caret line into the first numbered item. */
+    function startNumbering(text, caret) {
+      const start = lineStartAt(text, caret);
+      const stop = lineEndAt(text, start);
+      const line = text.slice(start, stop);
+      if (RE_NUMBER.test(line)) return null;
+      const indent = /^\s*/.exec(line)[0];
+      const rest = line.slice(indent.length);
+      const prefix = indent + '1. ';
+      return {
+        text: text.slice(0, start) + prefix + rest + text.slice(stop),
+        caret: caret + prefix.length
+      };
+    }
+
+    /** Turn the caret line into a to-do, or tick an existing one. */
+    function startTodo(text, caret) {
+      const start = lineStartAt(text, caret);
+      const stop = lineEndAt(text, start);
+      const line = text.slice(start, stop);
+      const todo = RE_TODO.exec(line);
+      if (todo !== null) {
+        const done = todo[2].toLowerCase() === 'x';
+        const replaced = todo[1] + '- [' + (done ? ' ' : 'x') + '] ' + line.slice(todo[0].length);
+        return { text: text.slice(0, start) + replaced + text.slice(stop), caret: Math.min(caret, start + replaced.length) };
+      }
+      const indent = /^\s*/.exec(line)[0];
+      const rest = line.slice(indent.length);
+      const prefix = indent + '- [ ] ';
+      return {
+        text: text.slice(0, start) + prefix + rest + text.slice(stop),
+        caret: caret + prefix.length
+      };
     }
 
     function fitSize(w, hgt, box) {
@@ -604,6 +747,143 @@ window.__ModuleLoader__.load({
     }
 
     /* ------------------------------------------------------------------ *
+     * Line tools UI (shared by both surfaces)
+     * ------------------------------------------------------------------ */
+
+    function useEditorTools(shared) {
+      const editorRef = useRef(null);
+
+      const putCaret = useCallback((caret) => {
+        globalThis.requestAnimationFrame(() => {
+          const node = editorRef.current;
+          if (node === null) return;
+          node.focus();
+          node.selectionStart = caret;
+          node.selectionEnd = caret;
+        });
+      }, []);
+
+      const onKeyDown = useCallback((event) => {
+        if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+        const node = event.currentTarget;
+        if (node.selectionStart !== node.selectionEnd) return;
+        const result = continueLine(node.value, node.selectionStart, store.state.flags.number);
+        if (result === null) return;
+        event.preventDefault();
+        store.setText(result.text);
+        putCaret(result.caret);
+      }, [putCaret]);
+
+      const toggleNumbering = useCallback(() => {
+        const next = !store.state.flags.number;
+        store.setNumbering(next);
+        if (!next) return;
+        const node = editorRef.current;
+        if (node === null) return;
+        const result = startNumbering(node.value, node.selectionStart);
+        if (result === null) return;
+        store.setText(result.text);
+        putCaret(result.caret);
+      }, [putCaret]);
+
+      const insertTodo = useCallback(() => {
+        const node = editorRef.current;
+        if (node === null) return;
+        const result = startTodo(node.value, node.selectionStart);
+        store.setText(result.text);
+        putCaret(result.caret);
+      }, [putCaret]);
+
+      const toggleTodoLine = useCallback((line) => {
+        const next = toggleTodoAt(store.state.text, line);
+        if (next !== null) store.setText(next);
+      }, []);
+
+      return { editorRef, onKeyDown, toggleNumbering, insertTodo, toggleTodoLine };
+    }
+
+    function NoteControls(props) {
+      const t = props.t;
+      const todos = props.todos;
+      const done = todos.filter((item) => item.done).length;
+      return h(
+        'div',
+        { className: 'dsh-notepad-bar' + (props.inline ? ' dsh-notepad-bar--inline' : '') },
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'dsh-notepad-bar__btn' + (props.numbering ? ' is-on' : ''),
+            onClick: (event) => {
+              event.stopPropagation();
+              props.onNumbering(event);
+            },
+            title: t('numberingHint'),
+            'aria-pressed': props.numbering
+          },
+          h(NumberIcon, null),
+          t('numbering')
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'dsh-notepad-bar__btn',
+            onClick: (event) => {
+              event.stopPropagation();
+              props.onInsertTodo(event);
+            },
+            title: t('insertTodoHint')
+          },
+          h(TodoIcon, null),
+          t('insertTodo')
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'dsh-notepad-bar__btn' + (props.todosOpen ? ' is-on' : ''),
+            onClick: (event) => {
+              event.stopPropagation();
+              props.onOpenTodos(event);
+            },
+            title: t('todosHint'),
+            'aria-expanded': props.todosOpen
+          },
+          h(ListIcon, null),
+          t('todosLabel') + ' ' + done + '/' + todos.length
+        )
+      );
+    }
+
+    function TodoPopover(props) {
+      if (props.anchor === null) return null;
+      const t = props.t;
+      return h(
+        React.Fragment,
+        null,
+        h('div', { className: 'dsh-notepad-veil', onClick: props.onClose }),
+        h(
+          'div',
+          { className: 'dsh-notepad-pop', style: { top: props.anchor.top + 'px', left: props.anchor.left + 'px' } },
+          props.todos.length === 0
+            ? h('div', { className: 'dsh-notepad-pop__empty' }, t('todoEmpty'))
+            : props.todos.map((item) => h(
+              'button',
+              {
+                key: item.line,
+                type: 'button',
+                className: 'dsh-notepad-pop__row' + (item.done ? ' is-done' : ''),
+                onClick: () => props.onToggle(item.line)
+              },
+              h('span', { className: 'dsh-notepad-pop__box' }, item.done ? h(CheckIcon, { width: 10, height: 10 }) : null),
+              h('span', { className: 'dsh-notepad-pop__label' }, item.label === '' ? '—' : item.label)
+            ))
+        )
+      );
+    }
+
+    /* ------------------------------------------------------------------ *
      * Icons
      * ------------------------------------------------------------------ */
 
@@ -663,6 +943,35 @@ window.__ModuleLoader__.load({
         strokeLinecap: 'round',
         strokeLinejoin: 'round'
       })
+    );
+
+    const NumberIcon = (props) => h(
+      'svg',
+      Object.assign({}, iconProps, props),
+      h('path', { d: 'M4.2 4.4 5.8 3.2v9.4', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+      h('circle', { cx: 10.6, cy: 12.2, r: 1.05, fill: 'currentColor' })
+    );
+
+    const TodoIcon = (props) => h(
+      'svg',
+      Object.assign({}, iconProps, props),
+      h('rect', { x: 2.4, y: 2.4, width: 11.2, height: 11.2, rx: 2.4, stroke: 'currentColor', strokeWidth: 1.2 }),
+      h('path', { d: 'M5.2 8.2 7.1 10.1l3.9-4', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' })
+    );
+
+    const ListIcon = (props) => h(
+      'svg',
+      Object.assign({}, iconProps, props),
+      h('path', { d: 'M6 4.2h7.4M6 8h7.4M6 11.8h7.4', stroke: 'currentColor', strokeWidth: 1.3, strokeLinecap: 'round' }),
+      h('circle', { cx: 3.4, cy: 4.2, r: 1, fill: 'currentColor' }),
+      h('circle', { cx: 3.4, cy: 8, r: 1, fill: 'currentColor' }),
+      h('circle', { cx: 3.4, cy: 11.8, r: 1, fill: 'currentColor' })
+    );
+
+    const CheckIcon = (props) => h(
+      'svg',
+      Object.assign({}, iconProps, props),
+      h('path', { d: 'M3.4 8.4 6.4 11.4l6.2-6.4', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' })
     );
 
     const ChevronUpIcon = (props) => h(
@@ -726,6 +1035,20 @@ window.__ModuleLoader__.load({
       const dragOrigin = useRef({ x: 0, y: 0 });
       const { start: startDrag, moved } = useDrag();
       const { notice, addFiles, removeImage } = useImageIntake();
+      const { editorRef, onKeyDown, toggleNumbering, insertTodo, toggleTodoLine } = useEditorTools(shared);
+      const todos = parseTodos(shared.text);
+      const [todoAnchor, setTodoAnchor] = useState(null);
+      const openTodos = useCallback((event) => {
+        if (todoAnchor !== null) {
+          setTodoAnchor(null);
+          return;
+        }
+        const rect = event.currentTarget.getBoundingClientRect();
+        setTodoAnchor({
+          top: rect.bottom + 6,
+          left: Math.max(8, Math.min(rect.left, (globalThis.innerWidth || 1280) - 296))
+        });
+      }, [todoAnchor]);
       const urls = useObjectUrls(shared.images);
 
       const applyPos = useCallback((next) => {
@@ -936,6 +1259,13 @@ window.__ModuleLoader__.load({
         React.Fragment,
         null,
         indicator === null ? null : h('div', { className: 'dsh-notepad-snap', style: indicator }),
+        h(TodoPopover, {
+          t,
+          anchor: todoAnchor,
+          todos,
+          onToggle: toggleTodoLine,
+          onClose: () => setTodoAnchor(null)
+        }),
         peek !== null
           ? h(
             'div',
@@ -1055,12 +1385,23 @@ window.__ModuleLoader__.load({
                   h(CollapseIcon)
                 )
               ),
+              h(NoteControls, {
+                t,
+                todos,
+                numbering: shared.flags.number,
+                todosOpen: todoAnchor !== null,
+                onNumbering: toggleNumbering,
+                onInsertTodo: insertTodo,
+                onOpenTodos: openTodos
+              }),
               h(
                 'div',
                 { className: 'dsh-notepad-card__body' },
                 h('textarea', {
+                  ref: editorRef,
                   className: 'dsh-notepad-card__editor',
                   value: shared.text,
+                  onKeyDown,
                   placeholder: t('placeholder'),
                   spellCheck: false,
                   onChange: (event) => store.setText(event.target.value)
@@ -1206,6 +1547,20 @@ window.__ModuleLoader__.load({
       const liveHeight = useRef(boot.dockHeight);
       const { start: startDrag } = useDrag();
       const { notice, addFiles, removeImage } = useImageIntake();
+      const { editorRef, onKeyDown, toggleNumbering, insertTodo, toggleTodoLine } = useEditorTools(shared);
+      const todos = parseTodos(shared.text);
+      const [todoAnchor, setTodoAnchor] = useState(null);
+      const openTodos = useCallback((event) => {
+        if (todoAnchor !== null) {
+          setTodoAnchor(null);
+          return;
+        }
+        const rect = event.currentTarget.getBoundingClientRect();
+        setTodoAnchor({
+          top: rect.bottom + 6,
+          left: Math.max(8, Math.min(rect.left, (globalThis.innerWidth || 1280) - 296))
+        });
+      }, [todoAnchor]);
       const urls = useObjectUrls(shared.images);
 
       useEffect(() => {
@@ -1293,6 +1648,13 @@ window.__ModuleLoader__.load({
       return h(
         React.Fragment,
         null,
+        h(TodoPopover, {
+          t,
+          anchor: todoAnchor,
+          todos,
+          onToggle: toggleTodoLine,
+          onClose: () => setTodoAnchor(null)
+        }),
         h(
           'div',
           {
@@ -1324,6 +1686,16 @@ window.__ModuleLoader__.load({
               { className: 'dsh-notepad-dock__meta' + (notice ? ' dsh-notepad-dock__meta--notice' : '') },
               status + ' · ' + counter
             ),
+            h(NoteControls, {
+              t,
+              todos,
+              inline: true,
+              numbering: shared.flags.number,
+              todosOpen: todoAnchor !== null,
+              onNumbering: toggleNumbering,
+              onInsertTodo: insertTodo,
+              onOpenTodos: openTodos
+            }),
             h(
               'button',
               {
@@ -1388,8 +1760,10 @@ window.__ModuleLoader__.load({
               'div',
               { className: 'dsh-notepad-dock__body' },
               h('textarea', {
+                ref: editorRef,
                 className: 'dsh-notepad-dock__editor',
                 value: shared.text,
+                onKeyDown,
                 placeholder: t('placeholder'),
                 spellCheck: false,
                 onChange: (event) => store.setText(event.target.value)
