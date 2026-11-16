@@ -75,6 +75,12 @@ window.__ModuleLoader__.load({
       'renumber': 'Renumber',
       'renumberHint': 'Rewrite every numbered line as 1, 2, 3 … per indent level',
       'clearDone': 'Remove done',
+      'linkImage': 'Insert a link to this image at the cursor',
+      'copyImage': 'Copy this image',
+      'todosTitle': 'To-dos',
+      'todoToggle': 'Tick or untick',
+      'todoJump': 'Jump to this line in the note',
+      'close': 'Close',
       'toFloat': 'Detach as a floating card'
     };
 
@@ -107,6 +113,12 @@ window.__ModuleLoader__.load({
       'renumber': '重新编号',
       'renumberHint': '把所有编号行按缩进分组重排成 1、2、3…',
       'clearDone': '清除已完成',
+      'linkImage': '在光标处插入这张图片的链接',
+      'copyImage': '复制这张图片',
+      'todosTitle': '待办',
+      'todoToggle': '勾选 / 取消',
+      'todoJump': '跳到笔记里的这一行',
+      'close': '关闭',
       'toFloat': '脱离为悬浮卡片'
     };
 
@@ -201,7 +213,43 @@ window.__ModuleLoader__.load({
       '.dsh-notepad-pop__foot{margin-top:4px;padding:6px 8px;border:none;border-top:.5px solid var(--dsw-alias-border-l3);',
       'background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12px;line-height:18px;',
       'text-align:left;cursor:pointer}',
-      '.dsh-notepad-pop__foot:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}'
+      '.dsh-notepad-pop__foot:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
+      '.dsh-notepad-todos{flex:none;max-height:38%;overflow:auto;box-sizing:border-box;display:flex;flex-direction:column;',
+      'border-bottom:.5px solid var(--dsw-alias-border-l3);padding:2px 0 6px;',
+      'font-family:var(--dsw-font-family,inherit);font-size:13px;line-height:20px}',
+      '.dsh-notepad-todos__head{display:flex;align-items:center;gap:6px;padding:4px 10px 2px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}',
+      '.dsh-notepad-todos__title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.dsh-notepad-todos__act{border:none;background:transparent;color:inherit;font-family:inherit;font-size:12px;line-height:18px;',
+      'cursor:pointer;padding:0 4px;border-radius:var(--dsw-radius-xs)}',
+      '.dsh-notepad-todos__act:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
+      '.dsh-notepad-todos__empty{padding:6px 12px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}',
+      '.dsh-notepad-todos__row{display:flex;align-items:flex-start;gap:8px;padding:1px 10px;box-sizing:border-box}',
+      '.dsh-notepad-todos__box{flex:none;width:15px;height:15px;margin:3px 0 0;padding:0;border-radius:4px;',
+      'border:1px solid var(--dsw-alias-border-l4);background:transparent;color:var(--dsw-alias-label-primary-inverted);',
+      'display:inline-flex;align-items:center;justify-content:center;cursor:pointer}',
+      '.dsh-notepad-todos__row.is-done .dsh-notepad-todos__box{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}',
+      '.dsh-notepad-todos__label{flex:1;min-width:0;padding:0;border:none;background:transparent;text-align:left;',
+      'color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;line-height:20px;cursor:pointer;',
+      'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-radius:var(--dsw-radius-xs)}',
+      '.dsh-notepad-todos__label:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.dsh-notepad-todos__row.is-done .dsh-notepad-todos__label{color:var(--dsw-alias-label-dimmed);text-decoration:line-through}',
+      '.dsh-notepad-rail{flex:none;width:146px;box-sizing:border-box;display:grid;grid-template-columns:repeat(2,1fr);',
+      'gap:8px;padding:8px;align-content:start;overflow:auto;border-left:.5px solid var(--dsw-alias-border-l3)}',
+      '.dsh-notepad-rail__item{position:relative;aspect-ratio:1;border-radius:var(--dsw-radius-sm);overflow:hidden;',
+      'border:.5px solid var(--dsw-alias-border-l3);background:var(--dsw-alias-bg-layer-1)}',
+      '.dsh-notepad-rail__item.is-active{border-color:var(--dsw-alias-brand-primary);box-shadow:0 0 0 1px var(--dsw-alias-brand-primary)}',
+      '.dsh-notepad-rail__open{position:absolute;inset:0;width:100%;height:100%;padding:0;border:none;background:transparent;cursor:zoom-in;display:block}',
+      '.dsh-notepad-rail__open img{width:100%;height:100%;object-fit:cover;display:block}',
+      '.dsh-notepad-rail__tools{position:absolute;top:2px;right:2px;display:flex;gap:2px;opacity:0;transition:opacity .12s ease}',
+      '.dsh-notepad-rail__item:hover .dsh-notepad-rail__tools,.dsh-notepad-rail__tools:focus-within{opacity:1}',
+      '.dsh-notepad-rail__tool{width:20px;height:20px;padding:0;border:none;border-radius:50%;display:inline-flex;',
+      'align-items:center;justify-content:center;cursor:pointer;background:var(--dsw-alias-bg-layer-2);',
+      'color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-elevation-soft)}',
+      '.dsh-notepad-rail__tool:hover{background:var(--dsw-alias-bg-layer-3)}',
+      '.dsh-notepad-rail__badge{position:absolute;left:3px;bottom:2px;padding:0 4px;border-radius:3px;',
+      'background:var(--dsw-alias-bg-mask-2);color:var(--dsw-alias-label-primary);font-size:10px;line-height:14px;border:none;cursor:pointer;',
+      'font-family:inherit}',
+      '.dsh-notepad-rail__item.is-active .dsh-notepad-rail__badge{background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary-inverted)}'
     ].join('');
 
     const DOCK_CSS = [
@@ -476,6 +524,30 @@ window.__ModuleLoader__.load({
         kept.push(line);
       }
       return removed === 0 ? null : { text: kept.join('\n'), removed };
+    }
+
+    /** Image references: [[img:abcd]] links a spot in the text to one thumbnail. */
+    const RE_IMAGE_REF = /\[\[img:([a-z0-9]{4})\]\]/gi;
+
+    function imageToken(image) {
+      return '[[img:' + String(image.id).slice(-4) + ']]';
+    }
+
+    function tokenAtCaret(text, caret) {
+      RE_IMAGE_REF.lastIndex = 0;
+      let match = RE_IMAGE_REF.exec(text);
+      while (match !== null) {
+        if (caret >= match.index && caret <= match.index + match[0].length) return match[0];
+        match = RE_IMAGE_REF.exec(text);
+      }
+      return null;
+    }
+
+    function insertToken(text, caret, token) {
+      if (text.indexOf(token) !== -1) return null;
+      const needsSpace = caret > 0 && !/\s/.test(text.charAt(caret - 1));
+      const insert = (needsSpace ? ' ' : '') + token + ' ';
+      return { text: text.slice(0, caret) + insert + text.slice(caret), caret: caret + insert.length };
     }
 
     /** Enter continuation. Returns null when the browser default should win. */
@@ -855,14 +927,83 @@ window.__ModuleLoader__.load({
         if (result !== null) store.setText(result.text);
       }, []);
 
+      const [activeRef, setActiveRef] = useState(null);
+
+      const onSelect = useCallback((event) => {
+        const node = event.currentTarget;
+        setActiveRef(tokenAtCaret(node.value, node.selectionStart));
+      }, []);
+
+      const jumpToLine = useCallback((line) => {
+        const node = editorRef.current;
+        if (node === null) return;
+        const lines = store.state.text.split('\n');
+        if (line < 0 || line >= lines.length) return;
+        let at = 0;
+        for (let index = 0; index < line; index += 1) at += lines[index].length + 1;
+        node.focus();
+        node.selectionStart = at;
+        node.selectionEnd = at + lines[line].length;
+        node.scrollTop = Math.max(0, line * 22 - node.clientHeight / 2);
+      }, []);
+
+      /** Insert the link token at the caret, or select the existing one. */
+      const linkImage = useCallback((image) => {
+        const node = editorRef.current;
+        if (node === null) return;
+        const token = imageToken(image);
+        const inserted = insertToken(node.value, node.selectionStart, token);
+        if (inserted !== null) {
+          store.setText(inserted.text);
+          putCaret(inserted.caret);
+          return;
+        }
+        const at = node.value.indexOf(token);
+        if (at === -1) return;
+        node.focus();
+        node.selectionStart = at;
+        node.selectionEnd = at + token.length;
+        node.scrollTop = Math.max(0, node.value.slice(0, at).split('\n').length * 22 - node.clientHeight / 2);
+      }, [putCaret]);
+
+      /** Copy the actual image bytes to the clipboard, falling back to the token. */
+      const copyImage = useCallback(async (image) => {
+        const blob = image.blob;
+        try {
+          if (globalThis.navigator && globalThis.navigator.clipboard
+            && typeof globalThis.ClipboardItem === 'function' && blob) {
+            await globalThis.navigator.clipboard.write([
+              new globalThis.ClipboardItem({ [blob.type || 'image/png']: blob })
+            ]);
+            return 'image';
+          }
+        } catch (err) {
+          /* fall through to the text token */
+        }
+        try {
+          if (globalThis.navigator && globalThis.navigator.clipboard) {
+            await globalThis.navigator.clipboard.writeText(imageToken(image));
+            return 'token';
+          }
+        } catch (err) {
+          /* nothing else to try */
+        }
+        return 'fail';
+      }, []);
+
       return {
         editorRef,
         onKeyDown,
+        onSelect,
+        activeRef,
         toggleNumbering,
         insertTodo,
         toggleTodoLine,
         renumber,
-        clearDone
+        clearDone,
+        jumpToLine,
+        linkImage,
+        copyImage
       };
     }
 
@@ -935,39 +1076,104 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function TodoPopover(props) {
-      if (props.anchor === null) return null;
+    function MediaRail(props) {
       const t = props.t;
       return h(
-        React.Fragment,
-        null,
-        h('div', { className: 'dsh-notepad-veil', onClick: props.onClose }),
-        h(
+        'div',
+        { className: 'dsh-notepad-rail' },
+        props.images.map((image) => h(
           'div',
-          { className: 'dsh-notepad-pop', style: { top: props.anchor.top + 'px', left: props.anchor.left + 'px' } },
-          props.todos.length === 0
-            ? h('div', { className: 'dsh-notepad-pop__empty' }, t('todoEmpty'))
-            : props.todos.map((item) => h(
-              'button',
-              {
-                key: item.line,
-                type: 'button',
-                className: 'dsh-notepad-pop__row' + (item.done ? ' is-done' : ''),
-                onClick: () => props.onToggle(item.line)
-              },
-              h('span', { className: 'dsh-notepad-pop__box' }, item.done ? h(CheckIcon, { width: 10, height: 10 }) : null),
-              h('span', { className: 'dsh-notepad-pop__label' }, item.label === '' ? '—' : item.label)
-            )),
-          props.done > 0
-            ? h(
-              'button',
-              { type: 'button', className: 'dsh-notepad-pop__foot', onClick: props.onClearDone },
-              t('clearDone') + ' · ' + props.done
-            )
-            : null
-        )
+          {
+            key: image.id,
+            className: 'dsh-notepad-rail__item' + (props.activeRef === imageToken(image) ? ' is-active' : '')
+          },
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh-notepad-rail__open',
+              onClick: () => props.onPreview(image.id),
+              title: image.name
+            },
+            props.urls[image.id] ? h('img', { src: props.urls[image.id], alt: image.name, draggable: false }) : null
+          ),
+          h(
+            'div',
+            { className: 'dsh-notepad-rail__tools' },
+            h('button', {
+              type: 'button',
+              className: 'dsh-notepad-rail__tool',
+              onClick: () => props.onLink(image),
+              title: t('linkImage')
+            }, h(LinkIcon, { width: 12, height: 12 })),
+            h('button', {
+              type: 'button',
+              className: 'dsh-notepad-rail__tool',
+              onClick: () => props.onCopy(image),
+              title: t('copyImage')
+            }, h(CopyIcon, { width: 12, height: 12 })),
+            h('button', {
+              type: 'button',
+              className: 'dsh-notepad-rail__tool',
+              onClick: () => props.onRemove(image.id),
+              title: t('removeImage')
+            }, h(CloseIcon, { width: 12, height: 12 }))
+          ),
+          h('button', {
+            type: 'button',
+            className: 'dsh-notepad-rail__badge',
+            onClick: () => props.onLink(image),
+            title: t('linkImage')
+          }, '#' + String(image.id).slice(-4))
+        ))
       );
     }
+
+    function TodoPanel(props) {
+      if (!props.open) return null;
+      const t = props.t;
+      return h(
+        'div',
+        { className: 'dsh-notepad-todos' },
+        h(
+          'div',
+          { className: 'dsh-notepad-todos__head' },
+          h('span', { className: 'dsh-notepad-todos__title' }, t('todosTitle') + ' ' + props.done + '/' + props.todos.length),
+          props.done > 0
+            ? h('button', { type: 'button', className: 'dsh-notepad-todos__act', onClick: props.onClearDone }, t('clearDone'))
+            : null,
+          h('button', { type: 'button', className: 'dsh-notepad-todos__act', onClick: props.onClose }, t('close'))
+        ),
+        props.todos.length === 0
+          ? h('div', { className: 'dsh-notepad-todos__empty' }, t('todoEmpty'))
+          : props.todos.map((item) => h(
+            'div',
+            { key: item.line, className: 'dsh-notepad-todos__row' + (item.done ? ' is-done' : '') },
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dsh-notepad-todos__box',
+                onClick: () => props.onToggle(item.line),
+                title: t('todoToggle'),
+                'aria-pressed': item.done
+              },
+              item.done ? h(CheckIcon, { width: 10, height: 10 }) : null
+            ),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dsh-notepad-todos__label',
+                onClick: () => props.onJump(item.line),
+                title: t('todoJump')
+              },
+              item.label === '' ? '—' : item.label
+            )
+          ))
+      );
+    }
+
 
     /* ------------------------------------------------------------------ *
      * Icons
@@ -1054,6 +1260,24 @@ window.__ModuleLoader__.load({
       h('circle', { cx: 3.4, cy: 11.8, r: 1, fill: 'currentColor' })
     );
 
+    const LinkIcon = (props) => h(
+      'svg',
+      Object.assign({}, iconProps, props),
+      h('path', {
+        d: 'M6.4 9.6 9.6 6.4M6 4.4l1-1a2.4 2.4 0 0 1 3.4 3.4l-1 1M9.9 11.6l-1 1a2.4 2.4 0 0 1-3.4-3.4l1-1',
+        stroke: 'currentColor',
+        strokeWidth: 1.25,
+        strokeLinecap: 'round'
+      })
+    );
+
+    const CopyIcon = (props) => h(
+      'svg',
+      Object.assign({}, iconProps, props),
+      h('rect', { x: 5.2, y: 5.2, width: 8, height: 8, rx: 1.4, stroke: 'currentColor', strokeWidth: 1.2 }),
+      h('path', { d: 'M10.6 5V3.8A1.2 1.2 0 0 0 9.4 2.6H3.8A1.2 1.2 0 0 0 2.6 3.8v5.6A1.2 1.2 0 0 0 3.8 10.6H5', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' })
+    );
+
     const CheckIcon = (props) => h(
       'svg',
       Object.assign({}, iconProps, props),
@@ -1121,20 +1345,23 @@ window.__ModuleLoader__.load({
       const dragOrigin = useRef({ x: 0, y: 0 });
       const { start: startDrag, moved } = useDrag();
       const { notice, addFiles, removeImage } = useImageIntake();
-      const { editorRef, onKeyDown, toggleNumbering, insertTodo, toggleTodoLine, renumber, clearDone } = useEditorTools(shared);
+      const {
+        editorRef,
+        onKeyDown,
+        onSelect,
+        activeRef,
+        toggleNumbering,
+        insertTodo,
+        toggleTodoLine,
+        renumber,
+        clearDone,
+        jumpToLine,
+        linkImage,
+        copyImage
+      } = useEditorTools(shared);
       const todos = parseTodos(shared.text);
-      const [todoAnchor, setTodoAnchor] = useState(null);
-      const openTodos = useCallback((event) => {
-        if (todoAnchor !== null) {
-          setTodoAnchor(null);
-          return;
-        }
-        const rect = event.currentTarget.getBoundingClientRect();
-        setTodoAnchor({
-          top: rect.bottom + 6,
-          left: Math.max(8, Math.min(rect.left, (globalThis.innerWidth || 1280) - 296))
-        });
-      }, [todoAnchor]);
+      const [todosOpen, setTodosOpen] = useState(false);
+      const toggleTodos = useCallback(() => setTodosOpen((value) => !value), []);
       const urls = useObjectUrls(shared.images);
 
       const applyPos = useCallback((next) => {
@@ -1345,15 +1572,6 @@ window.__ModuleLoader__.load({
         React.Fragment,
         null,
         indicator === null ? null : h('div', { className: 'dsh-notepad-snap', style: indicator }),
-        h(TodoPopover, {
-          t,
-          anchor: todoAnchor,
-          todos,
-          done: todos.filter((item) => item.done).length,
-          onToggle: toggleTodoLine,
-          onClearDone: clearDone,
-          onClose: () => setTodoAnchor(null)
-        }),
         peek !== null
           ? h(
             'div',
@@ -1477,11 +1695,21 @@ window.__ModuleLoader__.load({
                 t,
                 todos,
                 numbering: shared.flags.number,
-                todosOpen: todoAnchor !== null,
+                todosOpen,
                 onNumbering: toggleNumbering,
                 onInsertTodo: insertTodo,
-                onOpenTodos: openTodos,
+                onOpenTodos: toggleTodos,
                 onRenumber: renumber
+              }),
+              h(TodoPanel, {
+                t,
+                open: todosOpen,
+                todos,
+                done: todos.filter((item) => item.done).length,
+                onToggle: toggleTodoLine,
+                onJump: jumpToLine,
+                onClearDone: clearDone,
+                onClose: () => setTodosOpen(false)
               }),
               h(
                 'div',
@@ -1491,40 +1719,22 @@ window.__ModuleLoader__.load({
                   className: 'dsh-notepad-card__editor',
                   value: shared.text,
                   onKeyDown,
+                  onSelect,
                   placeholder: t('placeholder'),
                   spellCheck: false,
                   onChange: (event) => store.setText(event.target.value)
                 }),
                 shared.images.length > 0
-                  ? h(
-                    'div',
-                    { className: 'dsh-notepad-card__media' },
-                    shared.images.map((image) => h(
-                      'div',
-                      { key: image.id, className: 'dsh-notepad-card__thumb' },
-                      h(
-                        'button',
-                        {
-                          type: 'button',
-                          className: 'dsh-notepad-card__thumbOpen',
-                          onClick: () => setPreview(image.id),
-                          title: image.name
-                        },
-                        urls[image.id] ? h('img', { src: urls[image.id], alt: image.name, draggable: false }) : null
-                      ),
-                      h(
-                        'button',
-                        {
-                          type: 'button',
-                          className: 'dsh-notepad-card__thumbRemove',
-                          onClick: () => removeImage(image.id),
-                          title: t('removeImage'),
-                          'aria-label': t('removeImage')
-                        },
-                        h(CloseIcon, { width: 12, height: 12 })
-                      )
-                    ))
-                  )
+                  ? h(MediaRail, {
+                    t,
+                    images: shared.images,
+                    urls,
+                    activeRef,
+                    onPreview: setPreview,
+                    onLink: linkImage,
+                    onCopy: copyImage,
+                    onRemove: removeImage
+                  })
                   : null
               ),
               h(
@@ -1636,20 +1846,23 @@ window.__ModuleLoader__.load({
       const liveHeight = useRef(boot.dockHeight);
       const { start: startDrag } = useDrag();
       const { notice, addFiles, removeImage } = useImageIntake();
-      const { editorRef, onKeyDown, toggleNumbering, insertTodo, toggleTodoLine, renumber, clearDone } = useEditorTools(shared);
+      const {
+        editorRef,
+        onKeyDown,
+        onSelect,
+        activeRef,
+        toggleNumbering,
+        insertTodo,
+        toggleTodoLine,
+        renumber,
+        clearDone,
+        jumpToLine,
+        linkImage,
+        copyImage
+      } = useEditorTools(shared);
       const todos = parseTodos(shared.text);
-      const [todoAnchor, setTodoAnchor] = useState(null);
-      const openTodos = useCallback((event) => {
-        if (todoAnchor !== null) {
-          setTodoAnchor(null);
-          return;
-        }
-        const rect = event.currentTarget.getBoundingClientRect();
-        setTodoAnchor({
-          top: rect.bottom + 6,
-          left: Math.max(8, Math.min(rect.left, (globalThis.innerWidth || 1280) - 296))
-        });
-      }, [todoAnchor]);
+      const [todosOpen, setTodosOpen] = useState(false);
+      const toggleTodos = useCallback(() => setTodosOpen((value) => !value), []);
       const urls = useObjectUrls(shared.images);
 
       useEffect(() => {
@@ -1737,15 +1950,6 @@ window.__ModuleLoader__.load({
       return h(
         React.Fragment,
         null,
-        h(TodoPopover, {
-          t,
-          anchor: todoAnchor,
-          todos,
-          done: todos.filter((item) => item.done).length,
-          onToggle: toggleTodoLine,
-          onClearDone: clearDone,
-          onClose: () => setTodoAnchor(null)
-        }),
         h(
           'div',
           {
@@ -1782,10 +1986,10 @@ window.__ModuleLoader__.load({
               todos,
               inline: true,
               numbering: shared.flags.number,
-              todosOpen: todoAnchor !== null,
+              todosOpen,
               onNumbering: toggleNumbering,
               onInsertTodo: insertTodo,
-              onOpenTodos: openTodos,
+              onOpenTodos: toggleTodos,
               onRenumber: renumber
             }),
             h(
@@ -1848,6 +2052,18 @@ window.__ModuleLoader__.load({
           ),
           collapsed
             ? null
+            : h(TodoPanel, {
+              t,
+              open: todosOpen,
+              todos,
+              done: todos.filter((item) => item.done).length,
+              onToggle: toggleTodoLine,
+              onJump: jumpToLine,
+              onClearDone: clearDone,
+              onClose: () => setTodosOpen(false)
+            }),
+          collapsed
+            ? null
             : h(
               'div',
               { className: 'dsh-notepad-dock__body' },
@@ -1856,41 +2072,23 @@ window.__ModuleLoader__.load({
                 className: 'dsh-notepad-dock__editor',
                 value: shared.text,
                 onKeyDown,
+                onSelect,
                 placeholder: t('placeholder'),
                 spellCheck: false,
                 onChange: (event) => store.setText(event.target.value)
               }),
               shared.images.length > 0
-                ? h(
-                  'div',
-                  { className: 'dsh-notepad-dock__media' },
-                  shared.images.map((image) => h(
-                    'div',
-                    { key: image.id, className: 'dsh-notepad-dock__thumb' },
-                    h(
-                      'button',
-                      {
-                        type: 'button',
-                        className: 'dsh-notepad-dock__thumbOpen',
-                        onClick: () => setPreview(image.id),
-                        title: image.name
-                      },
-                      urls[image.id] ? h('img', { src: urls[image.id], alt: image.name, draggable: false }) : null
-                    ),
-                    h(
-                      'button',
-                      {
-                        type: 'button',
-                        className: 'dsh-notepad-dock__thumbRemove',
-                        onClick: () => removeImage(image.id),
-                        title: t('removeImage'),
-                        'aria-label': t('removeImage')
-                      },
-                      h(CloseIcon, { width: 12, height: 12 })
-                    )
-                  ))
-                )
-                : null
+                  ? h(MediaRail, {
+                    t,
+                    images: shared.images,
+                    urls,
+                    activeRef,
+                    onPreview: setPreview,
+                    onLink: linkImage,
+                    onCopy: copyImage,
+                    onRemove: removeImage
+                  })
+                  : null
             ),
           h('input', {
             ref: fileRef,

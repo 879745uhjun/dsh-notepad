@@ -1,8 +1,8 @@
 {
   "name": "dsh-notepad-card",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "type": "module",
-  "description": "Notepad for the Harness Web UI: a floating, edge-snapping card or a real bottom dock row, with auto numbering, to-dos and image notes.",
+  "description": "Notepad for the Harness Web UI: floating edge-snapping card or bottom dock, with auto numbering, an interactive to-do panel, image links and image copy.",
   "keywords": [
     "dsh",
     "dsh-plugin",
