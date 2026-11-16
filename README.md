@@ -73,6 +73,24 @@ plugin_manager install_bundle  target: <本仓库路径>  enabled: true
 - 大图预览用 `position: fixed` 覆盖视口，不受卡片尺寸限制。
 - 不引入任何 `@deepseek-ai/dsh-client-*` 包，React 由浏览器模块表提供，避免和宿主重复加载。
 
+## 测试
+
+插件是浏览器模块（`window.__ModuleLoader__.load`），Node 里无法 import，所以测试**直接从 `client.js` 切出纯函数再求值**——测的就是要发布的那份源码，不存在测试副本与实现漂移。改名或删函数会让测试直接报错。
+
+```bash
+npm test        # 等价于 node --test "test/**/*.test.mjs"（Node 24 下不能传目录）
+```
+
+| 文件 | 覆盖 |
+| --- | --- |
+| `test/lines.test.mjs` | 编号续号 `continueLine`、`startTodo`、`toggleTodoAt`、`parseTodos`、`clearDoneTodos`、`renumberAll` |
+| `test/snap.test.mjs` | 吸附取边 `nearestEdge`、`snapTo`（四边、阈值边界、平局、标题栏偏移） |
+| `test/helpers/extract-source.mjs` | 按名字从源码切片并求值，缺函数即失败 |
+
+共 22 个用例，零依赖。**故意把 `SNAP` 从 64 改成 40 时，正好两个阈值用例失败**，说明断言真的咬住了实现。
+
+**没覆盖的部分**（都不是纯函数）：吸附的“松手释放判定” `settle()`（读 `livePos` ref 与 `bounds()` 里的 `innerWidth`／`getComputedStyle`）、拖拽与四边缩放的指针流程、光标相关逻辑（`selectionStart`／`scrollTop`）、IndexedDB 图片存储、canvas 压缩与 `ClipboardItem`、以及两个界面的 React 渲染。要测这些得引入 DOM/IDB 模拟环境；下一步最小改法是把 `settle()` 的决策抽成纯函数 `resolveRelease(pos, size, box)`。
+
 ## 已知限制
 
 - **真正的“浮在窗口外”做不到**：插件渲染的是网页内容，浏览器只能在自身窗口内绘制，框架还用 `overflow:hidden` 裁掉越界部分。要让界面浮在桌面上，得创建独立的原生窗口——那超出插件契约（需要改 DSH 本体）。所以这里提供的是“贴边收成把手”的近似方案：看上去挂在窗外，实际是窗口内最外侧的一条。
