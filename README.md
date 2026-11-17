@@ -92,6 +92,21 @@ npm test        # 等价于 node --test "test/**/*.test.mjs"（Node 24 下不能
 
 **没覆盖的部分**（都不是纯函数）：吸附的“松手释放判定” `settle()`（读 `livePos` ref 与 `bounds()` 里的 `innerWidth`／`getComputedStyle`）、拖拽与四边缩放的指针流程、光标相关逻辑（`selectionStart`／`scrollTop`）、IndexedDB 图片存储、canvas 压缩与 `ClipboardItem`、以及两个界面的 React 渲染。要测这些得引入 DOM/IDB 模拟环境；下一步最小改法是把 `settle()` 的决策抽成纯函数 `resolveRelease(pos, size, box)`。
 
+## 工具
+
+`tools/push-via-api.mjs` —— 当 `github.com:443` 不通、`git push` 超时而 `api.github.com` 可用时，用 GitHub REST Git Data API 把当前提交写到远端：
+
+```bash
+node tools/push-via-api.mjs --repo <owner>/<name> --branch main            # 真推
+node tools/push-via-api.mjs --repo <owner>/<name> --branch main --dry-run  # 只校验，不写
+```
+
+- 逐字节复现本地提交（blob / tree / parents / message / 作者与提交时间），**远端 sha 与本地 HEAD 完全相同**；任一处不匹配就在动 ref 之前中止
+- 空仓库需要 `--bootstrap`（REST 的 blob 接口在空仓库上返回 409）
+- 不内置 token：读 `GH_TOKEN` / `GITHUB_TOKEN`，否则调用 `gh auth token`
+- 推送成功后会执行 `git update-ref refs/remotes/origin/<branch>`——REST API 不更新本地跟踪引用，不补这一步 `git status` 会一直显示幻影 `ahead N`，看起来像没推上去
+- `--dry-run` 已验证可用：逐个比对 blob sha、tree sha，并报告远端分支是否已等于 HEAD
+
 ## 已知限制
 
 - **真正的“浮在窗口外”做不到**：插件渲染的是网页内容，浏览器只能在自身窗口内绘制，框架还用 `overflow:hidden` 裁掉越界部分。要让界面浮在桌面上，得创建独立的原生窗口——那超出插件契约（需要改 DSH 本体）。所以这里提供的是“贴边收成把手”的近似方案：看上去挂在窗外，实际是窗口内最外侧的一条。
