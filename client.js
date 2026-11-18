@@ -325,20 +325,34 @@ window.__ModuleLoader__.load({
      * Shared note state: one note, two surfaces.
      * ------------------------------------------------------------------ */
 
-    const store = {
-      state: {
-        text: '',
-        mainText: '',
+    /**
+     * The store's full shape, in one place. Every surface reads several of these
+     * fields, so a partial state is a render-time crash — see the 4.4.2 fix.
+     */
+    function initialState(boot) {
+      const source = boot !== null && typeof boot === 'object' ? boot : {};
+      const text = typeof source.text === 'string' ? source.text : '';
+      const last = source.lastSession;
+      const lastSession = last !== null && typeof last === 'object' && typeof last.sessionId === 'string'
+        ? { sessionId: last.sessionId, title: typeof last.title === 'string' ? last.title : '' }
+        : null;
+      return {
+        text,
+        mainText: text,
         target: { kind: 'main' },
-        lastSession: null,
+        lastSession,
         reveal: 0,
         hint: '',
         degraded: false,
         images: [],
-        mode: MODE_FLOAT,
+        mode: source.mode === MODE_DOCK ? MODE_DOCK : MODE_FLOAT,
         saved: true,
-        flags: { number: false }
-      },
+        flags: { number: source.numbering === true }
+      };
+    }
+
+    const store = {
+      state: initialState({}),
       hintTimer: null,
       hintShown: false,
       listeners: new Set(),
@@ -356,21 +370,7 @@ window.__ModuleLoader__.load({
           parsed = null;
         }
         this.boot = parsed || {};
-        this.state = {
-          text: typeof this.boot.text === 'string' ? this.boot.text : '',
-          images: [],
-          mode: this.boot.mode === MODE_DOCK ? MODE_DOCK : MODE_FLOAT,
-          saved: true,
-          flags: { number: this.boot.numbering === true }
-        };
-        this.state.mainText = this.state.text;
-        if (this.boot.lastSession !== null && typeof this.boot.lastSession === 'object'
-          && typeof this.boot.lastSession.sessionId === 'string') {
-          this.state.lastSession = {
-            sessionId: this.boot.lastSession.sessionId,
-            title: typeof this.boot.lastSession.title === 'string' ? this.boot.lastSession.title : ''
-          };
-        }
+        this.state = initialState(this.boot);
         loadImages()
           .then((rows) => {
             this.state = { ...this.state, images: rows };

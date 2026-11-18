@@ -8,10 +8,11 @@ const {
   withSessionNote,
   createSessionNotes,
   installGlobal,
-  sessionMenuLabelKey
+  sessionMenuLabelKey,
+  initialState
 } = loadPure(
-  ['SESSION_NOTES_KEY', 'SESSION_PREVIEW'],
-  ['parseSessionNotes', 'previewOf', 'withSessionNote', 'createSessionNotes', 'installGlobal', 'sessionMenuLabelKey']
+  ['SESSION_NOTES_KEY', 'SESSION_PREVIEW', 'MODE_FLOAT', 'MODE_DOCK'],
+  ['parseSessionNotes', 'previewOf', 'withSessionNote', 'createSessionNotes', 'installGlobal', 'sessionMenuLabelKey', 'initialState']
 );
 
 /** Fake storage: a plain map plus a switch to make writes throw. */
@@ -38,6 +39,46 @@ function makeStore(storage, wait = 10) {
     wait
   });
 }
+
+/* ------------------------------------------------------------------ state shape */
+
+test('initialState carries every field the surfaces read', () => {
+  const state = initialState({});
+  const required = ['text', 'mainText', 'target', 'lastSession', 'reveal', 'hint', 'degraded', 'images', 'mode', 'saved', 'flags'];
+  assert.deepEqual(Object.keys(state).sort(), required.slice().sort());
+  assert.deepEqual(state.target, { kind: 'main' });
+  assert.equal(state.text, '');
+  assert.equal(state.mainText, '');
+  assert.equal(state.mode, 'float');
+  assert.equal(state.flags.number, false);
+  assert.equal(state.lastSession, null);
+});
+
+test('initialState hydrates persisted fields without dropping the rest', () => {
+  const state = initialState({
+    text: 'hello',
+    mode: 'dock',
+    numbering: true,
+    lastSession: { sessionId: 's1', title: '标题' }
+  });
+  assert.equal(state.text, 'hello');
+  assert.equal(state.mainText, 'hello');
+  assert.deepEqual(state.target, { kind: 'main' }, 'a reload always starts on the main note');
+  assert.equal(state.mode, 'dock');
+  assert.equal(state.flags.number, true);
+  assert.deepEqual(state.lastSession, { sessionId: 's1', title: '标题' });
+});
+
+test('initialState tolerates broken input', () => {
+  for (const boot of [null, undefined, 'x', 42, { lastSession: 'nope' }, { lastSession: { title: 'x' } }]) {
+    const state = initialState(boot);
+    assert.equal(state.target.kind, 'main');
+    assert.equal(state.lastSession, null);
+    assert.equal(state.mode, 'float');
+    assert.equal(state.text, '');
+  }
+  assert.deepEqual(initialState({ lastSession: { sessionId: 's1' } }).lastSession, { sessionId: 's1', title: '' });
+});
 
 /* ------------------------------------------------------------------ parsing */
 
