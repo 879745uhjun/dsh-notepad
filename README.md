@@ -129,20 +129,31 @@ npm test        # 等价于 node --test "test/**/*.test.mjs"（Node 24 下不能
 
 **没覆盖的部分**（都不是纯函数）：吸附的“松手释放判定” `settle()`（读 `livePos` ref 与 `bounds()` 里的 `innerWidth`／`getComputedStyle`）、拖拽与四边缩放的指针流程、光标相关逻辑（`selectionStart`／`scrollTop`）、IndexedDB 图片存储、canvas 压缩与 `ClipboardItem`、以及两个界面的 React 渲染。要测这些得引入 DOM/IDB 模拟环境；下一步最小改法是把 `settle()` 的决策抽成纯函数 `resolveRelease(pos, size, box)`。
 
-## 工具
-
-`tools/push-via-api.mjs` —— 当 `github.com:443` 不通、`git push` 超时而 `api.github.com` 可用时，用 GitHub REST Git Data API 把当前提交写到远端：
+## 工具：网络异常时的标准兜底推送路径
 
 ```bash
-node tools/push-via-api.mjs --repo <owner>/<name> --branch main            # 真推
-node tools/push-via-api.mjs --repo <owner>/<name> --branch main --dry-run  # 只校验，不写
+# 1) 先校验，不写远端（逐个比对 blob/tree，并报告远端分支是否已等于 HEAD）
+node tools/push-via-api.mjs --repo <owner>/<name> --branch main --dry-run
+
+# 2) 校验通过后再真推
+node tools/push-via-api.mjs --repo <owner>/<name> --branch main
 ```
 
+**什么时候用它**（本机 `github.com:443` 会间歇性被重置，`git push` 时通时断）：
+
+| 情况 | 做法 |
+| --- | --- |
+| `git push` 正常成功 | 用 git，别用这个脚本 |
+| `git push` 报 `Failed to connect` / `Recv failure: Connection was reset` / 超时，而 `gh auth status` 正常 | 用本脚本（它走 `api.github.com`） |
+| 仓库是新建的空仓库 | 加 `--bootstrap`（REST 的 blob 接口在空仓库上返回 409） |
+| 只想确认「远端到底是不是 HEAD」 | `--dry-run`，一条命令给出结论 |
+
+行为与边界：
+
 - 逐字节复现本地提交（blob / tree / parents / message / 作者与提交时间），**远端 sha 与本地 HEAD 完全相同**；任一处不匹配就在动 ref 之前中止
-- 空仓库需要 `--bootstrap`（REST 的 blob 接口在空仓库上返回 409）
-- 不内置 token：读 `GH_TOKEN` / `GITHUB_TOKEN`，否则调用 `gh auth token`
+- 不内置 token：读 `GH_TOKEN` / `GITHUB_TOKEN`，否则调用 `gh auth token`（不落盘）
 - 推送成功后会执行 `git update-ref refs/remotes/origin/<branch>`——REST API 不更新本地跟踪引用，不补这一步 `git status` 会一直显示幻影 `ahead N`，看起来像没推上去
-- `--dry-run` 已验证可用：逐个比对 blob sha、tree sha，并报告远端分支是否已等于 HEAD
+- **判断「是否已推送」以远端 sha 为准**：`git ls-remote` 自己也可能被重置，此时用 `gh api repos/<owner>/<repo>/git/ref/heads/<branch>`；两者都取不到就明确说「未验证」，不要拿本地 `refs/remotes/*` 下结论
 
 ## 已知限制
 
