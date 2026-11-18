@@ -442,6 +442,7 @@ window.__ModuleLoader__.load({
         if (typeof sessionId !== 'string' || sessionId === '') return;
         const notes = getSessionNotes();
         notes.flush();
+        this.flushMain();
         if (this.saving !== null) {
           globalThis.clearTimeout(this.saving);
           this.saving = null;
@@ -474,6 +475,19 @@ window.__ModuleLoader__.load({
           reveal: this.state.reveal + 1
         };
         this.emit();
+      },
+      /** Persist the main document right now when a debounced write is pending. */
+      flushMain() {
+        if (this.state.target.kind !== 'main') return;
+        if (this.saving === null) return;
+        globalThis.clearTimeout(this.saving);
+        this.saving = null;
+        this.write({ text: this.state.mainText, mode: this.state.mode });
+      },
+      /** Flush both documents; used before the page goes away. */
+      flushAll() {
+        getSessionNotes().flush();
+        this.flushMain();
       },
       /** Header switch: main ⇄ the last Session note. */
       toggleTarget() {
@@ -2566,6 +2580,20 @@ window.__ModuleLoader__.load({
         } catch (err) {
           /* seat unavailable: no menu row, everything else stays */
         }
+
+        /* Persist pending edits when the page is hidden or torn down. */
+        ctx.effect(() => {
+          const flush = () => store.flushAll();
+          const onVisibility = () => {
+            if (document.visibilityState === 'hidden') flush();
+          };
+          globalThis.addEventListener('pagehide', flush);
+          document.addEventListener('visibilitychange', onVisibility);
+          return () => {
+            globalThis.removeEventListener('pagehide', flush);
+            document.removeEventListener('visibilitychange', onVisibility);
+          };
+        }, 'notepad: flush on hide');
 
         /* Cross-plugin protocol (todos and friends). The disposer removes exactly
            this object, so a hot reload never leaves an old closure behind. */
