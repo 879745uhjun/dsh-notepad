@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Notepad",
-    "description": "A notepad that floats and snaps to any edge or docks into the bottom row, with auto numbering, a to-do list and images."
+    "description": "A notepad that floats and snaps to any edge or docks into the bottom row, with per-Session notes, auto numbering, a to-do list and images."
   }
 }

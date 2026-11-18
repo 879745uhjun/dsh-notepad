@@ -81,6 +81,12 @@ window.__ModuleLoader__.load({
       'todoToggle': 'Tick or untick',
       'todoJump': 'Jump to this line in the note',
       'close': 'Close',
+      'mainNote': 'Main',
+      'sessionNote': 'Session note',
+      'switchTarget': 'Switch between the main note and this Session note',
+      'menuNewNote': 'Jot a note',
+      'menuOpenNote': 'Open Session note',
+      'sessionMemoryOnly': 'Session notes are memory-only: storage is unavailable',
       'toFloat': 'Detach as a floating card'
     };
 
@@ -119,6 +125,12 @@ window.__ModuleLoader__.load({
       'todoToggle': '勾选 / 取消',
       'todoJump': '跳到笔记里的这一行',
       'close': '关闭',
+      'mainNote': '主笔记',
+      'sessionNote': '会话笔记',
+      'switchTarget': '在主笔记与本会话笔记之间切换',
+      'menuNewNote': '记一笔',
+      'menuOpenNote': '打开会话笔记',
+      'sessionMemoryOnly': '会话笔记暂存内存：本地存储不可写',
       'toFloat': '脱离为悬浮卡片'
     };
 
@@ -249,7 +261,18 @@ window.__ModuleLoader__.load({
       '.dsh-notepad-rail__badge{position:absolute;left:3px;bottom:2px;padding:0 4px;border-radius:3px;',
       'background:var(--dsw-alias-bg-mask-2);color:var(--dsw-alias-label-primary);font-size:10px;line-height:14px;border:none;cursor:pointer;',
       'font-family:inherit}',
-      '.dsh-notepad-rail__item.is-active .dsh-notepad-rail__badge{background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary-inverted)}'
+      '.dsh-notepad-rail__item.is-active .dsh-notepad-rail__badge{background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary-inverted)}',
+      '.dsh-notepad-target{flex:none;height:20px;padding:0 7px;border-radius:10px;cursor:pointer;',
+      'border:.5px solid var(--dsw-alias-border-l3);background:transparent;color:var(--dsw-alias-label-secondary);',
+      'font-family:inherit;font-size:11px;line-height:18px;white-space:nowrap}',
+      '.dsh-notepad-target:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}',
+      '.dsh-notepad-target.is-session{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-text)}',
+      '.dsh-notepad-menu{display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;border:none;background:transparent;',
+      'color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13px;line-height:20px;text-align:left;cursor:pointer;',
+      'border-radius:var(--dsw-radius-sm)}',
+      '.dsh-notepad-menu:hover{background:var(--dsw-alias-interactive-bg-hover)}',
+      '.dsh-notepad-menu__icon{flex:none;display:flex;color:var(--dsw-alias-label-secondary)}',
+      '.dsh-notepad-menu__label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
     ].join('');
 
     const DOCK_CSS = [
@@ -303,7 +326,21 @@ window.__ModuleLoader__.load({
      * ------------------------------------------------------------------ */
 
     const store = {
-      state: { text: '', images: [], mode: MODE_FLOAT, saved: true, flags: { number: false } },
+      state: {
+        text: '',
+        mainText: '',
+        target: { kind: 'main' },
+        lastSession: null,
+        reveal: 0,
+        hint: '',
+        degraded: false,
+        images: [],
+        mode: MODE_FLOAT,
+        saved: true,
+        flags: { number: false }
+      },
+      hintTimer: null,
+      hintShown: false,
       listeners: new Set(),
       loaded: false,
       saving: null,
@@ -326,6 +363,14 @@ window.__ModuleLoader__.load({
           saved: true,
           flags: { number: this.boot.numbering === true }
         };
+        this.state.mainText = this.state.text;
+        if (this.boot.lastSession !== null && typeof this.boot.lastSession === 'object'
+          && typeof this.boot.lastSession.sessionId === 'string') {
+          this.state.lastSession = {
+            sessionId: this.boot.lastSession.sessionId,
+            title: typeof this.boot.lastSession.title === 'string' ? this.boot.lastSession.title : ''
+          };
+        }
         loadImages()
           .then((rows) => {
             this.state = { ...this.state, images: rows };
@@ -350,7 +395,23 @@ window.__ModuleLoader__.load({
         }
       },
       setText(text) {
-        this.state = { ...this.state, text, saved: false };
+        const target = this.state.target;
+        if (target.kind === 'session') {
+          const notes = getSessionNotes();
+          notes.set(target.sessionId, text);
+          this.state = { ...this.state, text, saved: false };
+          this.emit();
+          if (this.saving !== null) globalThis.clearTimeout(this.saving);
+          this.saving = globalThis.setTimeout(() => {
+            this.saving = null;
+            const degraded = notes.isDegraded();
+            this.state = { ...this.state, saved: true, degraded };
+            this.emit();
+            if (degraded) this.warnOnce();
+          }, 250);
+          return;
+        }
+        this.state = { ...this.state, text, mainText: text, saved: false };
         this.emit();
         if (this.saving !== null) globalThis.clearTimeout(this.saving);
         this.saving = globalThis.setTimeout(() => {
@@ -359,6 +420,72 @@ window.__ModuleLoader__.load({
           this.state = { ...this.state, saved: true };
           this.emit();
         }, 250);
+      },
+      /** Show the storage-degraded hint once per run. */
+      warnOnce() {
+        if (this.hintShown) return;
+        this.hintShown = true;
+        this.setHint('sessionMemoryOnly');
+      },
+      setHint(key) {
+        this.state = { ...this.state, hint: key };
+        this.emit();
+        if (this.hintTimer !== null) globalThis.clearTimeout(this.hintTimer);
+        this.hintTimer = globalThis.setTimeout(() => {
+          this.hintTimer = null;
+          this.state = { ...this.state, hint: '' };
+          this.emit();
+        }, 4000);
+      },
+      /** Switch to one Session's note; also brings the floating card back. */
+      openSessionNote(sessionId, title) {
+        if (typeof sessionId !== 'string' || sessionId === '') return;
+        const notes = getSessionNotes();
+        notes.flush();
+        if (this.saving !== null) {
+          globalThis.clearTimeout(this.saving);
+          this.saving = null;
+        }
+        const resolved = typeof title === 'string' ? title : '';
+        this.state = {
+          ...this.state,
+          target: { kind: 'session', sessionId, title: resolved },
+          lastSession: { sessionId, title: resolved },
+          text: notes.get(sessionId),
+          saved: true,
+          mode: MODE_FLOAT,
+          reveal: this.state.reveal + 1
+        };
+        this.write({ lastSession: { sessionId, title: resolved }, mode: MODE_FLOAT });
+        this.emit();
+      },
+      openMainNote() {
+        const notes = getSessionNotes();
+        notes.flush();
+        if (this.saving !== null) {
+          globalThis.clearTimeout(this.saving);
+          this.saving = null;
+        }
+        this.state = {
+          ...this.state,
+          target: { kind: 'main' },
+          text: this.state.mainText,
+          saved: true,
+          reveal: this.state.reveal + 1
+        };
+        this.emit();
+      },
+      /** Header switch: main ⇄ the last Session note. */
+      toggleTarget() {
+        if (this.state.target.kind === 'session') {
+          this.openMainNote();
+          return;
+        }
+        const last = this.state.lastSession;
+        if (last !== null && typeof last.sessionId === 'string') this.openSessionNote(last.sessionId, last.title);
+      },
+      hasSessionNote(sessionId) {
+        return getSessionNotes().has(sessionId);
       },
       setImages(images) {
         this.state = { ...this.state, images };
@@ -386,6 +513,28 @@ window.__ModuleLoader__.load({
       useEffect(() => store.subscribe(() => force((value) => value + 1)), []);
       store.load();
       return store.state;
+    }
+
+    /** One process-wide session-note store, wired to the browser storage. */
+    let sessionNotes = null;
+
+    function getSessionNotes() {
+      if (sessionNotes !== null) return sessionNotes;
+      sessionNotes = createSessionNotes({
+        read: () => {
+          try {
+            return globalThis.localStorage.getItem(SESSION_NOTES_KEY);
+          } catch (err) {
+            return null;
+          }
+        },
+        write: (payload) => {
+          globalThis.localStorage.setItem(SESSION_NOTES_KEY, payload);
+        },
+        now: () => Date.now(),
+        wait: 250
+      });
+      return sessionNotes;
     }
 
     /* ------------------------------------------------------------------ *
@@ -444,6 +593,158 @@ window.__ModuleLoader__.load({
 
     function clampAxis(value, low, high) {
       return Math.min(Math.max(value, low), Math.max(low, high));
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Session notes: one extra note per Session, kept in its own storage key so
+     * the main document (dsh-notepad:v1) keeps its shape.
+     * ------------------------------------------------------------------ */
+
+    const SESSION_NOTES_KEY = 'dsh-notepad:session-notes:v1';
+    const SESSION_PREVIEW = 40;
+
+    /** Tolerant parse: anything unexpected collapses to an empty map. */
+    function parseSessionNotes(raw) {
+      if (typeof raw !== 'string' || raw === '') return {};
+      let parsed = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        return {};
+      }
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      const out = {};
+      for (const sessionId of Object.keys(parsed)) {
+        const entry = parsed[sessionId];
+        if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) continue;
+        if (typeof entry.text !== 'string') continue;
+        const updatedAt = typeof entry.updatedAt === 'number' && Number.isFinite(entry.updatedAt)
+          ? entry.updatedAt
+          : 0;
+        out[sessionId] = { text: entry.text, updatedAt };
+      }
+      return out;
+    }
+
+    /** One line, first 40 characters — the shape the external protocol promises. */
+    function previewOf(text) {
+      return String(text).replace(/\s+/g, ' ').trim().slice(0, SESSION_PREVIEW);
+    }
+
+    /** Immutable write helper: same map shape in, new map out. */
+    function withSessionNote(map, sessionId, text, updatedAt) {
+      if (typeof sessionId !== 'string' || sessionId === '') return map;
+      const next = Object.assign({}, map);
+      next[sessionId] = { text: String(text), updatedAt };
+      return next;
+    }
+
+    /**
+     * Debounced session-note store.
+     * Injected IO keeps it DOM-free, so it is unit-testable: read() returns the raw
+     * stored string, write() persists it (and may throw when storage is full).
+     * Writes go to memory first, so a failing storage degrades to memory-only
+     * instead of losing keystrokes.
+     */
+    function createSessionNotes(options) {
+      const wait = typeof options.wait === 'number' ? options.wait : 250;
+      const now = typeof options.now === 'function' ? options.now : () => Date.now();
+      const listeners = new Set();
+      const memory = new Map();
+      let timer = null;
+      let pending = null;
+      let degraded = false;
+
+      const read = () => {
+        const base = parseSessionNotes(options.read());
+        for (const [sessionId, entry] of memory) base[sessionId] = entry;
+        return base;
+      };
+
+      const persist = () => {
+        if (pending === null) return;
+        const payload = pending;
+        pending = null;
+        try {
+          options.write(JSON.stringify(payload));
+          degraded = false;
+        } catch (err) {
+          degraded = true;
+        }
+      };
+
+      const notify = (sessionId) => {
+        for (const listener of listeners) {
+          try {
+            listener(sessionId);
+          } catch (err) {
+            /* one broken listener must not stop the others */
+          }
+        }
+      };
+
+      return {
+        list() {
+          const map = read();
+          return Object.keys(map)
+            .map((sessionId) => ({
+              sessionId,
+              updatedAt: map[sessionId].updatedAt,
+              preview: previewOf(map[sessionId].text)
+            }))
+            .sort((left, right) => right.updatedAt - left.updatedAt);
+        },
+        get(sessionId) {
+          const map = read();
+          return map[sessionId] === undefined ? '' : map[sessionId].text;
+        },
+        has(sessionId) {
+          const map = read();
+          return map[sessionId] !== undefined && previewOf(map[sessionId].text) !== '';
+        },
+        set(sessionId, text) {
+          if (typeof sessionId !== 'string' || sessionId === '') return;
+          const entry = { text: String(text), updatedAt: now() };
+          memory.set(sessionId, entry);
+          pending = read();
+          if (timer !== null) globalThis.clearTimeout(timer);
+          timer = globalThis.setTimeout(() => {
+            timer = null;
+            persist();
+            notify(sessionId);
+          }, wait);
+        },
+        flush() {
+          if (timer !== null) {
+            globalThis.clearTimeout(timer);
+            timer = null;
+          }
+          persist();
+        },
+        isDegraded() {
+          return degraded;
+        },
+        subscribe(listener) {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        }
+      };
+    }
+
+    /** Session menu wording: a first note vs. one that already has content. */
+    function sessionMenuLabelKey(hasNote) {
+      return hasNote === true ? 'menuOpenNote' : 'menuNewNote';
+    }
+
+    /** Installs the cross-plugin protocol object and removes exactly that object on unload. */
+    function installGlobal(scope, api) {
+      const previous = scope.dshNotepad;
+      scope.dshNotepad = api;
+      return () => {
+        if (scope.dshNotepad !== api) return; // someone else owns the name now: leave it alone
+        if (previous === undefined) delete scope.dshNotepad;
+        else scope.dshNotepad = previous;
+      };
     }
 
     /* ------------------------------------------------------------------ *
@@ -1175,6 +1476,33 @@ window.__ModuleLoader__.load({
     }
 
 
+    /** Session row menu entry: "记一笔" when empty, "打开会话笔记" when not. */
+    function SessionNoteMenuItem(props) {
+      const t = (key) => (typeof props.t === 'function' ? props.t(key) : (EN[key] !== undefined ? EN[key] : key));
+      const has = store.hasSessionNote(props.sessionId);
+      const useMenu = typeof props.useMenuOpenState === 'function' ? props.useMenuOpenState : () => [false, () => {}];
+      const menu = useMenu();
+      const setOpen = Array.isArray(menu) ? menu[1] : () => {};
+      const label = t(sessionMenuLabelKey(has));
+      return h(
+        'button',
+        {
+          type: 'button',
+          role: 'menuitem',
+          className: 'dsh-notepad-menu',
+          title: label,
+          onClick: (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (typeof setOpen === 'function') setOpen(false);
+            store.openSessionNote(props.sessionId, typeof props.displayTitle === 'string' ? props.displayTitle : '');
+          }
+        },
+        h(NoteIcon, { width: 14, height: 14, className: 'dsh-notepad-menu__icon' }),
+        h('span', { className: 'dsh-notepad-menu__label' }, label)
+      );
+    }
+
     /* ------------------------------------------------------------------ *
      * Icons
      * ------------------------------------------------------------------ */
@@ -1361,6 +1689,15 @@ window.__ModuleLoader__.load({
       } = useEditorTools(shared);
       const todos = parseTodos(shared.text);
       const [todosOpen, setTodosOpen] = useState(false);
+
+      // A menu row or the external protocol may ask for the card: expand it.
+      const revealRef = useRef(shared.reveal);
+      useEffect(() => {
+        if (shared.reveal === revealRef.current) return;
+        revealRef.current = shared.reveal;
+        setCollapsed(false);
+        setPeek(null);
+      }, [shared.reveal]);
       const toggleTodos = useCallback(() => setTodosOpen((value) => !value), []);
       const urls = useObjectUrls(shared.images);
 
@@ -1559,7 +1896,9 @@ window.__ModuleLoader__.load({
       const previewImage = preview === null
         ? null
         : shared.images.filter((image) => image.id === preview)[0] || null;
-      const status = notice ? t(notice) : (shared.saved ? t('saved') : t('saving'));
+      const status = notice ? t(notice) : (shared.hint ? t(shared.hint) : (shared.saved ? t('saved') : t('saving')));
+      const inSession = shared.target.kind === 'session';
+      const noteTitle = inSession ? (shared.target.title || t('sessionNote')) : t('title');
       const counter = shared.text.length + ' ' + t('chars')
         + (shared.images.length > 0 ? ' · ' + shared.images.length + ' ' + t('images') : '');
       const box = bounds();
@@ -1629,7 +1968,22 @@ window.__ModuleLoader__.load({
                   title: t('move')
                 },
                 h(NoteIcon, { className: 'dsh-notepad-card__headIcon' }),
-                h('span', { className: 'dsh-notepad-card__title' }, t('title')),
+                h('span', { className: 'dsh-notepad-card__title' }, noteTitle),
+                h(
+                  'button',
+                  {
+                    type: 'button',
+                    className: 'dsh-notepad-target' + (inSession ? ' is-session' : ''),
+                    onClick: (event) => {
+                      event.stopPropagation();
+                      store.toggleTarget();
+                    },
+                    onPointerDown: (event) => event.stopPropagation(),
+                    title: t('switchTarget'),
+                    'aria-label': t('switchTarget')
+                  },
+                  inSession ? t('sessionNote') : t('mainNote')
+                ),
                 h(
                   'button',
                   {
@@ -1941,7 +2295,9 @@ window.__ModuleLoader__.load({
       const previewImage = preview === null
         ? null
         : shared.images.filter((image) => image.id === preview)[0] || null;
-      const status = notice ? t(notice) : (shared.saved ? t('saved') : t('saving'));
+      const status = notice ? t(notice) : (shared.hint ? t(shared.hint) : (shared.saved ? t('saved') : t('saving')));
+      const inSession = shared.target.kind === 'session';
+      const noteTitle = inSession ? (shared.target.title || t('sessionNote')) : t('title');
       const counter = shared.text.length + ' ' + t('chars')
         + (shared.images.length > 0 ? ' · ' + shared.images.length + ' ' + t('images') : '');
       const limit = Math.min(DOCK_MAX_H, Math.max(DOCK_MIN_H, globalThis.innerHeight * 0.7));
@@ -1975,7 +2331,21 @@ window.__ModuleLoader__.load({
               title: collapsed ? t('expand') : t('collapse')
             },
             h(NoteIcon, { className: 'dsh-notepad-dock__headIcon' }),
-            h('span', { className: 'dsh-notepad-dock__title' }, t('title')),
+            h('span', { className: 'dsh-notepad-dock__title' }, noteTitle),
+            h(
+              'button',
+              {
+                type: 'button',
+                className: 'dsh-notepad-target' + (inSession ? ' is-session' : ''),
+                onClick: (event) => {
+                  event.stopPropagation();
+                  store.toggleTarget();
+                },
+                title: t('switchTarget'),
+                'aria-label': t('switchTarget')
+              },
+              inSession ? t('sessionNote') : t('mainNote')
+            ),
             h(
               'span',
               { className: 'dsh-notepad-dock__meta' + (notice ? ' dsh-notepad-dock__meta--notice' : '') },
@@ -2183,6 +2553,32 @@ window.__ModuleLoader__.load({
           id: 'dsh-notepad-dock',
           locale: NS
         }, NotepadDock));
+
+        /* The Session row menu is a legacy seat: if the host stops offering it the
+           notepad must keep working, so an unavailable seat is not an error. */
+        try {
+          ctx.slots.inject('sidebar.workspaces.session.menu.item', () => ctx.slots.register({
+            name: 'sidebar.workspaces.session.menu.item',
+            id: 'dsh-notepad-menu',
+            order: 130,
+            locale: NS
+          }, SessionNoteMenuItem));
+        } catch (err) {
+          /* seat unavailable: no menu row, everything else stays */
+        }
+
+        /* Cross-plugin protocol (todos and friends). The disposer removes exactly
+           this object, so a hot reload never leaves an old closure behind. */
+        ctx.effect(() => {
+          const notes = getSessionNotes();
+          const api = {
+            version: 1,
+            listSessionNotes: () => notes.list(),
+            openSessionNote: (sessionId) => store.openSessionNote(sessionId, ''),
+            subscribe: (listener) => notes.subscribe(listener)
+          };
+          return installGlobal(globalThis, api);
+        }, 'notepad: session-note protocol');
       }
     };
   }

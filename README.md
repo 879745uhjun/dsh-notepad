@@ -14,6 +14,7 @@
 ## 功能
 
 - **模式开关**：悬浮 ↔ 底部停靠一键切换，文字与图片完全共享，切换时正在进行的内容会先落盘，不会丢。
+- **会话笔记**：会话行菜单「记一笔」直接给该会话记一条（已有内容则「打开会话笔记」），标题旁胶囊按钮在主笔记 / 会话笔记之间切换；对外暴露 `window.dshNotepad` 协议（列表 / 打开 / 订阅）供其它插件使用。
 - **自动编号**：点工具栏「编号」把当前行变成 `1. ` 并开启自动编号——回车自动续号（`2.`、`3.`…），在空的编号项上回车则结束列表；支持 `1.` 与 `1)` 两种写法，缩进层级跟着保留。开启后工具栏会多出「重新编号」，一键把所有编号行按缩进分组重排成 1、2、3…（插入或删除过条目后特别好用）。
 - **待办**：`- [ ]` / `- [x]` 行就是待办。点「待办」把当前行转成待办（已勾选则取消勾选），回车自动补下一条未勾选项；点「清单 n/m」弹出全部待办，点一行即可勾选/取消，源码里的标记同步改写，弹层底部还能「清除已完成」一次删掉所有勾选过的条目。
 - **四边自动吸附**：拖动中实时比较到四边的距离，≤64px 时贴边（左/右贴 x，上/下贴 y），边框与圆角随之贴合。
@@ -73,6 +74,41 @@ plugin_manager install_bundle  target: <本仓库路径>  enabled: true
 - 大图预览用 `position: fixed` 覆盖视口，不受卡片尺寸限制。
 - 不引入任何 `@deepseek-ai/dsh-client-*` 包，React 由浏览器模块表提供，避免和宿主重复加载。
 
+## 会话笔记（4.4.0）
+
+主笔记之外，每个会话可以有一份自己的便签，用来「从会话里记一笔、之后能找到」。
+
+**数据**
+- 主文档仍是 `dsh-notepad:v1`，键名与结构不变；
+- 会话笔记单独存 `dsh-notepad:session-notes:v1`：`{ [sessionId]: { text, updatedAt } }`；
+- 读取容错：缺键 / 坏 JSON / 非对象 / 字段类型不对 → 当作空；写入 250ms 防抖（与主笔记一致）。
+
+**用法**
+1. 左侧会话列表 → 会话行「⋯」菜单 →「记一笔」（该会话已有内容时显示「打开会话笔记」）；
+2. 记事本自动切到悬浮模式并展开，载入该会话的笔记，标题显示会话名；
+3. 标题旁的胶囊按钮「主笔记 / 会话笔记」可随时来回切换；
+4. 收起、贴边、拖出窗外都不影响两种笔记，各自独立保存。
+
+**对外协议**（给 todos 等插件用，形状固定，不改名）
+
+```js
+window.dshNotepad = {
+  version: 1,
+  listSessionNotes(): Array<{ sessionId: string, updatedAt: number, preview: string }>,
+  openSessionNote(sessionId: string): void,
+  subscribe(listener: (sessionId: string) => void): () => void,
+}
+```
+
+- `preview`：正文压成一行后的前 40 个字符；
+- `subscribe`：写入落盘后通知，返回取消函数；
+- 插件卸载/热更时只摘掉自己那个对象（不覆盖后来者，也不残留旧闭包）。
+
+**降级**
+- 会话行菜单位置不可用（宿主契约变化）→ 不注册菜单，记事本其余功能照常；
+- localStorage 不可写（隐私模式 / 配额满）→ 会话笔记退化为内存态（当前输入不丢），并提示一次「会话笔记暂存内存」；
+- 图片仍挂在主文档的附件库里：会话笔记只保存文字。
+
 ## 测试
 
 插件是浏览器模块（`window.__ModuleLoader__.load`），Node 里无法 import，所以测试**直接从 `client.js` 切出纯函数再求值**——测的就是要发布的那份源码，不存在测试副本与实现漂移。改名或删函数会让测试直接报错。
@@ -85,10 +121,11 @@ npm test        # 等价于 node --test "test/**/*.test.mjs"（Node 24 下不能
 | --- | --- |
 | `test/lines.test.mjs` | 编号续号 `continueLine`、`startTodo`、`toggleTodoAt`、`parseTodos`、`clearDoneTodos`、`renumberAll` |
 | `test/snap.test.mjs` | 吸附取边 `nearestEdge`、`snapTo`（四边、阈值边界、平局、标题栏偏移） |
+| `test/session-notes.test.mjs` | 会话笔记：坏数据容错、防抖与 flush、订阅通知/取消、列表排序与 preview、菜单文案（新建 / 打开已有）、存储失败退化为内存、会话键不写主文档键、全局对象安装/卸载/接管 |
 | `test/extract-source.test.mjs` | 切片器自身：字符串/模板/注释里的 `{``}` 不会截断、缺函数报错、括号不配对报错 |
 | `test/helpers/extract-source.mjs` | 按名字从源码切片并求值（引号与注释感知），缺函数即失败 |
 
-共 27 个用例，零依赖。**故意把 `SNAP` 从 64 改成 40 时，正好两个阈值用例失败**，说明断言真的咬住了实现。
+共 41 个用例，零依赖。**故意把 `SNAP` 从 64 改成 40 时，正好两个阈值用例失败**，说明断言真的咬住了实现。
 
 **没覆盖的部分**（都不是纯函数）：吸附的“松手释放判定” `settle()`（读 `livePos` ref 与 `bounds()` 里的 `innerWidth`／`getComputedStyle`）、拖拽与四边缩放的指针流程、光标相关逻辑（`selectionStart`／`scrollTop`）、IndexedDB 图片存储、canvas 压缩与 `ClipboardItem`、以及两个界面的 React 渲染。要测这些得引入 DOM/IDB 模拟环境；下一步最小改法是把 `settle()` 的决策抽成纯函数 `resolveRelease(pos, size, box)`。
 
