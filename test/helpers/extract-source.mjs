@@ -94,7 +94,7 @@ export function loadPure(consts, functions) {
     ...consts.map((name) => extractConst(source, name)),
     ...functions.map((name) => extractFunction(source, name))
   ].join('\n\n');
-  const names = functions.join(', ');
+  const names = functions.concat(consts.map((name) => name)).join(', ');
   // eslint-disable-next-line no-new-func
   return new Function(`${code}\n\nreturn { ${names} };`)();
 }

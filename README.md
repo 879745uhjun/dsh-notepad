@@ -109,6 +109,21 @@ window.dshNotepad = {
 - localStorage 不可写（隐私模式 / 配额满）→ 会话笔记退化为内存态（当前输入不丢），并提示一次「会话笔记暂存内存」；
 - 图片仍挂在主文档的附件库里：会话笔记只保存文字。
 
+## 自检（4.5.0）
+
+设置 → 插件 → 选中「记事本」→ 详情页里的「自检」区块。**只有点「运行自检」才跑**，挂载时不发任何探测；每条检查 2s 超时，失败显示原因；「复制结果」输出 Markdown 清单（`- [x] 标签 — 通过`）。
+
+| # | 检查项 | 判定 |
+| --- | --- | --- |
+| 1 | `window.dshNotepad` 协议 | `version === 1`，且 `listSessionNotes()` 可调用并返回数组 |
+| 2 | localStorage 读写探针 | 写临时键 `dsh-notepad:selftest` → 读回 → 删除；任何一步抛错即失败 |
+| 3 | 主笔记键可读 | `dsh-notepad:v1` 能被读取（存在或不存在都算通过） |
+| 4 | 会话行菜单槽位 | `sidebar.workspaces.session.menu.item` 由宿主声明过（本插件的注册被接受即通过） |
+
+- 入口：`plugins.detail.section`，`id: dsh-notepad.selftest`，`order: 90`，locale 用插件自己的命名空间
+- 槽位不存在（宿主契约变化）时静默跳过，记事本本身不受影响
+- 全程只读 + 一个自动清理的临时键，不读写用户笔记内容
+
 ## 测试
 
 插件是浏览器模块（`window.__ModuleLoader__.load`），Node 里无法 import，所以测试**直接从 `client.js` 切出纯函数再求值**——测的就是要发布的那份源码，不存在测试副本与实现漂移。改名或删函数会让测试直接报错。

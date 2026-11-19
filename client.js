@@ -87,6 +87,25 @@ window.__ModuleLoader__.load({
       'menuNewNote': 'Jot a note',
       'menuOpenNote': 'Open Session note',
       'sessionMemoryOnly': 'Session notes are memory-only: storage is unavailable',
+      'selfTest.title': 'Self-test',
+      'selfTest.run': 'Run self-test',
+      'selfTest.running': 'Running…',
+      'selfTest.copy': 'Copy result',
+      'selfTest.copied': 'Copied as Markdown',
+      'selfTest.copyFail': 'Clipboard unavailable — the Markdown could not be copied',
+      'selfTest.notRun': 'Not run',
+      'selfTest.pass': 'Pass',
+      'selfTest.fail': 'Fail',
+      'selfTest.timeout': 'Timed out after 2s',
+      'selfTest.onClickOnly': 'Runs only when you press the button — nothing is probed on mount.',
+      'selfTest.checkProtocol': 'window.dshNotepad protocol (version 1, listSessionNotes)',
+      'selfTest.checkStorage': 'localStorage read/write probe (temporary key, removed afterwards)',
+      'selfTest.checkDocument': 'Main note key is readable',
+      'selfTest.checkMenu': 'Session row menu seat registered',
+      'selfTest.detailNoProtocol': 'window.dshNotepad is missing: the plugin is not loaded',
+      'selfTest.detailBadVersion': 'version is not 1',
+      'selfTest.detailNoList': 'listSessionNotes() is missing or did not return an array',
+      'selfTest.detailNoMenu': 'sidebar.workspaces.session.menu.item was never declared by the host',
       'toFloat': 'Detach as a floating card'
     };
 
@@ -131,6 +150,25 @@ window.__ModuleLoader__.load({
       'menuNewNote': '记一笔',
       'menuOpenNote': '打开会话笔记',
       'sessionMemoryOnly': '会话笔记暂存内存：本地存储不可写',
+      'selfTest.title': '自检',
+      'selfTest.run': '运行自检',
+      'selfTest.running': '运行中…',
+      'selfTest.copy': '复制结果',
+      'selfTest.copied': '已复制为 Markdown',
+      'selfTest.copyFail': '剪贴板不可用，Markdown 没复制成功',
+      'selfTest.notRun': '未运行',
+      'selfTest.pass': '通过',
+      'selfTest.fail': '失败',
+      'selfTest.timeout': '超过 2s 未返回',
+      'selfTest.onClickOnly': '只在点按钮时运行，挂载时不做任何探测。',
+      'selfTest.checkProtocol': 'window.dshNotepad 协议（version 1、listSessionNotes）',
+      'selfTest.checkStorage': 'localStorage 读写探针（临时键，结束后删除）',
+      'selfTest.checkDocument': '主笔记键可读',
+      'selfTest.checkMenu': '会话行菜单槽位已注册',
+      'selfTest.detailNoProtocol': 'window.dshNotepad 不存在：插件未加载',
+      'selfTest.detailBadVersion': 'version 不是 1',
+      'selfTest.detailNoList': 'listSessionNotes() 不存在或没返回数组',
+      'selfTest.detailNoMenu': '宿主从未声明 sidebar.workspaces.session.menu.item',
       'toFloat': '脱离为悬浮卡片'
     };
 
@@ -272,7 +310,34 @@ window.__ModuleLoader__.load({
       'border-radius:var(--dsw-radius-sm)}',
       '.dsh-notepad-menu:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.dsh-notepad-menu__icon{flex:none;display:flex;color:var(--dsw-alias-label-secondary)}',
-      '.dsh-notepad-menu__label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+      '.dsh-notepad-menu__label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.dsh-notepad-self{margin-top:12px;padding-top:12px;border-top:.5px solid var(--dsw-alias-border-l3);',
+      'font-family:var(--dsw-font-family,inherit)}',
+      '.dsh-notepad-self__head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
+      '.dsh-notepad-self__btn{flex:none;height:26px;padding:0 10px;border:none;border-radius:var(--dsw-radius-sm);cursor:pointer;',
+      'background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary-inverted);',
+      'font-family:inherit;font-size:12px;line-height:18px}',
+      '.dsh-notepad-self__btn:disabled{opacity:.55;cursor:default}',
+      '.dsh-notepad-self__btn--ghost{background:transparent;border:.5px solid var(--dsw-alias-border-l3);',
+      'color:var(--dsw-alias-label-secondary)}',
+      '.dsh-notepad-self__btn--ghost:hover:not(:disabled){color:var(--dsw-alias-label-primary);',
+      'background:var(--dsw-alias-interactive-bg-hover)}',
+      '.dsh-notepad-self__summary{flex:1;min-width:80px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}',
+      '.dsh-notepad-self__list{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}',
+      '.dsh-notepad-self__row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 10px;',
+      'padding:6px 10px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-1)}',
+      '.dsh-notepad-self__label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;',
+      'color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}',
+      '.dsh-notepad-self__badge{flex:none;padding:1px 8px;border-radius:999px;font-size:11px;line-height:16px;',
+      'color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2)}',
+      '.dsh-notepad-self__badge.is-pass{color:var(--dsw-alias-state-success-primary)}',
+      '.dsh-notepad-self__badge.is-fail{color:var(--dsw-alias-state-error-primary)}',
+      '.dsh-notepad-self__badge.is-busy,.dsh-notepad-self__badge.is-idle{color:var(--dsw-alias-label-dimmed)}',
+      '.dsh-notepad-self__detail{grid-column:1 / -1;color:var(--dsw-alias-label-dimmed);font-size:11px;line-height:16px;',
+      'word-break:break-word}',
+      '.dsh-notepad-self__note{margin-top:8px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}',
+      '.dsh-notepad-self__note--warn{color:var(--dsw-alias-state-error-primary)}',
+      '.dsh-notepad-self__hint{margin-top:8px;color:var(--dsw-alias-label-dimmed);font-size:11px;line-height:16px}'
     ].join('');
 
     const DOCK_CSS = [
@@ -1518,6 +1583,176 @@ window.__ModuleLoader__.load({
     }
 
     /* ------------------------------------------------------------------ *
+     * Self-test section (plugins.detail.section)
+     * Runs only on click; every check is bounded by SELF_TEST_TIMEOUT.
+     * ------------------------------------------------------------------ */
+
+    const SELF_TEST_REGISTRATION = { name: 'plugins.detail.section', id: 'dsh-notepad.selftest', order: 90 };
+    const SELF_TEST_TIMEOUT = 2000;
+
+    /**
+     * Runs every check with a hard timeout. A throw, a hang or a non-conforming
+     * return value all become { ok: false, detail } — this never rejects.
+     */
+    function runSelfTestChecks(checks, options) {
+      const wait = options !== null && typeof options === 'object' && typeof options.wait === 'number'
+        ? options.wait
+        : SELF_TEST_TIMEOUT;
+      return Promise.all(checks.map((check) => new Promise((resolve) => {
+        let settled = false;
+        let timer = null;
+        const controller = typeof globalThis.AbortController === 'function' ? new globalThis.AbortController() : null;
+        const finish = (ok, detail) => {
+          if (settled) return;
+          settled = true;
+          if (timer !== null) globalThis.clearTimeout(timer);
+          resolve({ id: check.id, label: check.label, ok, detail });
+        };
+        timer = globalThis.setTimeout(() => {
+          if (controller !== null) {
+            try {
+              controller.abort();
+            } catch (err) {
+              /* nothing to abort */
+            }
+          }
+          finish(false, 'timeout');
+        }, wait);
+        Promise.resolve()
+          .then(() => check.run(controller === null ? undefined : controller.signal))
+          .then((outcome) => {
+            if (outcome !== null && typeof outcome === 'object' && outcome.ok === true) {
+              finish(true, '');
+              return;
+            }
+            const detail = outcome !== null && typeof outcome === 'object' && typeof outcome.detail === 'string'
+              ? outcome.detail
+              : '';
+            finish(false, detail);
+          })
+          .catch((err) => {
+            finish(false, err !== null && err !== undefined && typeof err.message === 'string' ? err.message : String(err));
+          });
+      })));
+    }
+
+    function selfTestSummary(results, words) {
+      if (!Array.isArray(results)) return words.idle;
+      const pass = results.filter((result) => result.ok).length;
+      return pass + ' ' + words.pass + ' · ' + (results.length - pass) + ' ' + words.fail;
+    }
+
+    function selfTestMarkdown(results, words) {
+      if (!Array.isArray(results) || results.length === 0) return '';
+      const passWord = words !== null && typeof words === 'object' && typeof words.pass === 'string' ? words.pass : 'pass';
+      const failWord = words !== null && typeof words === 'object' && typeof words.fail === 'string' ? words.fail : 'fail';
+      return results.map((result) => (
+        result.ok
+          ? '- [x] ' + result.label + ' — ' + passWord
+          : '- [ ] ' + result.label + ' — ' + failWord + '：' + (result.detail === '' ? '-' : result.detail)
+      )).join('\n');
+    }
+
+    function SelfTestSection(props) {
+      const t = typeof props.t === 'function' ? props.t : (key) => (EN[key] !== undefined ? EN[key] : key);
+      const checks = Array.isArray(props.checks) ? props.checks : [];
+      const [results, setResults] = useState(null);
+      const [busy, setBusy] = useState(false);
+      const [copyState, setCopyState] = useState('');
+
+      const words = { pass: t('selfTest.pass'), fail: t('selfTest.fail'), idle: t('selfTest.notRun') };
+      const labelled = checks.map((check) => ({
+        id: check.id,
+        label: t(check.labelKey),
+        run: check.run
+      }));
+
+      const run = useCallback(() => {
+        if (busy) return;
+        setBusy(true);
+        setCopyState('');
+        runSelfTestChecks(labelled, { wait: SELF_TEST_TIMEOUT })
+          .then((next) => {
+            setResults(next);
+            setBusy(false);
+          })
+          .catch(() => setBusy(false));
+      }, [busy, props.checks]);
+
+      const copy = useCallback(() => {
+        const markdown = selfTestMarkdown(results, words);
+        if (markdown === '') return;
+        try {
+          const clipboard = globalThis.navigator && globalThis.navigator.clipboard;
+          if (clipboard && typeof clipboard.writeText === 'function') {
+            clipboard.writeText(markdown)
+              .then(() => setCopyState('ok'))
+              .catch(() => setCopyState('fail'));
+            return;
+          }
+        } catch (err) {
+          /* fall through to the failure hint */
+        }
+        setCopyState('fail');
+      }, [results, words.pass, words.fail]);
+
+      const stateOf = (check) => {
+        if (busy) return { text: t('selfTest.running'), tone: 'is-busy', hit: undefined };
+        if (!Array.isArray(results)) return { text: t('selfTest.notRun'), tone: 'is-idle', hit: undefined };
+        const hit = results.filter((result) => result.id === check.id)[0];
+        if (hit === undefined) return { text: t('selfTest.notRun'), tone: 'is-idle', hit: undefined };
+        return hit.ok
+          ? { text: t('selfTest.pass'), tone: 'is-pass', hit }
+          : { text: t('selfTest.fail'), tone: 'is-fail', hit };
+      };
+
+      return h(
+        'section',
+        { className: 'dsh-notepad-self' },
+        h(
+          'div',
+          { className: 'dsh-notepad-self__head' },
+          h(
+            'button',
+            { type: 'button', className: 'dsh-notepad-self__btn', onClick: run, disabled: busy },
+            busy ? t('selfTest.running') : t('selfTest.run')
+          ),
+          h('span', { className: 'dsh-notepad-self__summary' }, selfTestSummary(results, words)),
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh-notepad-self__btn dsh-notepad-self__btn--ghost',
+              onClick: copy,
+              disabled: !Array.isArray(results) || results.length === 0
+            },
+            t('selfTest.copy')
+          )
+        ),
+        copyState === 'ok' ? h('div', { className: 'dsh-notepad-self__note' }, t('selfTest.copied')) : null,
+        copyState === 'fail' ? h('div', { className: 'dsh-notepad-self__note dsh-notepad-self__note--warn' }, t('selfTest.copyFail')) : null,
+        h(
+          'ul',
+          { className: 'dsh-notepad-self__list' },
+          checks.map((check) => {
+            const state = stateOf(check);
+            const detail = state.hit !== undefined && state.hit.ok === false && state.hit.detail !== ''
+              ? (state.hit.detail === 'timeout' ? t('selfTest.timeout') : state.hit.detail)
+              : null;
+            return h(
+              'li',
+              { key: check.id, className: 'dsh-notepad-self__row' },
+              h('span', { className: 'dsh-notepad-self__label' }, t(check.labelKey)),
+              h('span', { className: 'dsh-notepad-self__badge ' + state.tone }, state.text),
+              detail === null ? null : h('span', { className: 'dsh-notepad-self__detail' }, detail)
+            );
+          })
+        ),
+        h('div', { className: 'dsh-notepad-self__hint' }, t('selfTest.onClickOnly'))
+      );
+    }
+
+    /* ------------------------------------------------------------------ *
      * Icons
      * ------------------------------------------------------------------ */
 
@@ -2570,15 +2805,102 @@ window.__ModuleLoader__.load({
 
         /* The Session row menu is a legacy seat: if the host stops offering it the
            notepad must keep working, so an unavailable seat is not an error. */
+        let menuRegistered = false;
         try {
-          ctx.slots.inject('sidebar.workspaces.session.menu.item', () => ctx.slots.register({
-            name: 'sidebar.workspaces.session.menu.item',
-            id: 'dsh-notepad-menu',
-            order: 130,
-            locale: NS
-          }, SessionNoteMenuItem));
+          ctx.slots.inject('sidebar.workspaces.session.menu.item', () => {
+            menuRegistered = true;
+            return ctx.slots.register({
+              name: 'sidebar.workspaces.session.menu.item',
+              id: 'dsh-notepad-menu',
+              order: 130,
+              locale: NS
+            }, SessionNoteMenuItem);
+          });
         } catch (err) {
           /* seat unavailable: no menu row, everything else stays */
+        }
+
+        /* Self-test: four checks, read-only, run only when the user asks. */
+        const selfTestChecks = [
+          {
+            id: 'protocol',
+            labelKey: 'selfTest.checkProtocol',
+            run: () => {
+              const api = globalThis.dshNotepad;
+              if (api === null || typeof api !== 'object') return { ok: false, detail: 'selfTest.detailNoProtocol' };
+              if (api.version !== 1) return { ok: false, detail: 'selfTest.detailBadVersion' };
+              if (typeof api.listSessionNotes !== 'function') return { ok: false, detail: 'selfTest.detailNoList' };
+              const list = api.listSessionNotes();
+              if (!Array.isArray(list)) return { ok: false, detail: 'selfTest.detailNoList' };
+              return { ok: true };
+            }
+          },
+          {
+            id: 'storage',
+            labelKey: 'selfTest.checkStorage',
+            run: () => {
+              const key = 'dsh-notepad:selftest';
+              try {
+                globalThis.localStorage.setItem(key, 'ok');
+                const back = globalThis.localStorage.getItem(key);
+                globalThis.localStorage.removeItem(key);
+                if (back !== 'ok') return { ok: false, detail: 'read back: ' + String(back) };
+                return { ok: true };
+              } catch (err) {
+                try {
+                  globalThis.localStorage.removeItem(key);
+                } catch (cleanupError) {
+                  /* the probe key may not exist */
+                }
+                return { ok: false, detail: err !== null && err !== undefined && typeof err.message === 'string' ? err.message : 'storage error' };
+              }
+            }
+          },
+          {
+            id: 'document',
+            labelKey: 'selfTest.checkDocument',
+            run: () => {
+              try {
+                const raw = globalThis.localStorage.getItem('dsh-notepad:v1');
+                // Present or absent both pass: the note starts empty by design.
+                return raw === null || typeof raw === 'string' ? { ok: true } : { ok: false, detail: 'unexpected value' };
+              } catch (err) {
+                return { ok: false, detail: err !== null && err !== undefined && typeof err.message === 'string' ? err.message : 'storage error' };
+              }
+            }
+          },
+          {
+            id: 'menu',
+            labelKey: 'selfTest.checkMenu',
+            run: () => (menuRegistered === true ? { ok: true } : { ok: false, detail: 'selfTest.detailNoMenu' })
+          }
+        ];
+
+        /* Check details are locale keys; the section resolves them at render time. */
+        const localizeChecks = (checks) => checks.map((check) => ({
+          id: check.id,
+          labelKey: check.labelKey,
+          run: () => {
+            const outcome = check.run();
+            if (outcome !== null && typeof outcome === 'object' && outcome.ok === false
+              && typeof outcome.detail === 'string' && outcome.detail.indexOf('selfTest.') === 0) {
+              return { ok: false, detail: outcome.detail };
+            }
+            return outcome;
+          }
+        }));
+
+        const SelfTest = (props) => h(SelfTestSection, Object.assign({}, props, { checks: localizeChecks(selfTestChecks) }));
+
+        try {
+          ctx.slots.inject(SELF_TEST_REGISTRATION.name, () => ctx.slots.register({
+            name: SELF_TEST_REGISTRATION.name,
+            id: SELF_TEST_REGISTRATION.id,
+            order: SELF_TEST_REGISTRATION.order,
+            locale: NS
+          }, SelfTest));
+        } catch (err) {
+          /* the plugin detail page may not offer sections: nothing else breaks */
         }
 
         /* Persist pending edits when the page is hidden or torn down. */
