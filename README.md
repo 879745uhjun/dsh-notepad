@@ -176,4 +176,7 @@ node tools/push-via-api.mjs --repo <owner>/<name> --branch main
 - 悬浮卡片会盖住下方内容（这是浮层的固有属性）；放在边缘、收成把手或小方块可把影响降到最小。
 - `shell.overlay` 之上还有框架自己的遮罩（例如左侧栏抽屉展开时），那时卡片暂时点不到，关掉抽屉即可。
 - `shell.bottom` 是单占位槽；停靠模式下它由本插件占用，若将来官方也往这一行注册内容，两者会互相顶替（后注册者优先）。
+- **自动化核验的限制**：本构建里带 `input` 的 `cordis_inspect_query` 调用（host 与 client 两端都复现）
+  一律返回 `"input" must be an object`；不带 `input` 的同类调用正常。这只影响自动化核验，不影响插件运行——
+  要确认槽位与协议，用插件详情页的「自检」区块（4 项检查正好覆盖协议、存储、主文档键、菜单槽位）。
 - 图片按 Blob 存 IndexedDB，属于浏览器本地数据，不随 DSH profile 迁移。
