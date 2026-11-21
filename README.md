@@ -68,7 +68,9 @@ plugin_manager install_bundle  target: <本仓库路径>  enabled: true
 - 文字与图片放在一个模块级 store 里（`subscribe` + `emit`），两处界面共享同一份数据；切模式时先把未落盘的内容同步写一次，避免丢字。
 - 挂载在 **`shell.overlay`**：框架唯一的全窗口悬浮层，条目默认可点击（`pointer-events` 由每条自己开启）。
 - 坐标直接用视口坐标（`left/top`），只把顶部标题栏那条 `--dsh-frame-chrome-top` 让开，避免压住可拖动窗口的标题栏。
-- 吸附判定：`nearestEdge()` 比较四边距离取最近者，`snapTo()` 只改对应那一轴，另一轴保持原位——所以可以贴着上边缘靠右、也可以贴着左边靠下。
+- 拖动释放的判定是**纯函数** `resolveRelease(pos, size, box)`（4.5.1 从 `settle()` 拆出）：不读 DOM、不碰存储，
+  返回 `{ kind: 'peek' | 'snap' | 'free', side, pos }`；`settle()` 只负责取几何 → 调它 → 应用结果。
+- 吸附判定：`nearestEdge()` 比较四边距离取最近者，`snapTo()` 只改对应那一轴，另一轴保持原位——所以可以贴着上边缘靠右、也可以贴着左边靠下。平局按 left/right/top/bottom 顺序取先者。
 - 拖动过程中位置写进 `useRef`，松手时用**最终坐标**判定吸附，避免 React 状态滞后导致的“差一点没吸上”。
 - 边缘缩放时记录“对边”坐标（rightEdge/bottomEdge），每帧用 `对边 - 新尺寸` 反推新位置，缩到下限时对边不会漂移。
 - 大图预览用 `position: fixed` 覆盖视口，不受卡片尺寸限制。

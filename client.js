@@ -1030,6 +1030,41 @@ window.__ModuleLoader__.load({
       return { left: x + 'px', top: (box.h - thickness) + 'px', width: w + 'px', height: thickness + 'px' };
     }
 
+    /**
+     * Release decision for a dropped card: pure geometry, no DOM, no storage, no
+     * React. Answers one question — where does the card go when the pointer is
+     * released?
+     *
+     *   kind 'peek' — dropped more than PEEK_TRIGGER outside an edge: tuck into a handle
+     *   kind 'snap' — within SNAP of an edge: sit flush against it
+     *   kind 'free' — otherwise: stay, clamped inside the viewport
+     *
+     * Edge ties resolve by the declared order left, right, top, bottom.
+     */
+    function resolveRelease(pos, size, box) {
+      const overflow = {
+        left: -pos.x,
+        right: (pos.x + size.w) - box.w,
+        top: box.top - pos.y,
+        bottom: (pos.y + size.h) - box.h
+      };
+      let target = null;
+      let deepest = PEEK_TRIGGER;
+      for (const key of ['left', 'right', 'top', 'bottom']) {
+        if (overflow[key] > deepest) {
+          deepest = overflow[key];
+          target = key;
+        }
+      }
+      if (target !== null) return { kind: 'peek', side: target, pos: { x: pos.x, y: pos.y } };
+
+      const edge = nearestEdge(pos.x, pos.y, size.w, size.h, box);
+      if (edge !== null) {
+        return { kind: 'snap', side: edge, pos: snapTo(edge, pos.x, pos.y, size.w, size.h, box) };
+      }
+      return { kind: 'free', side: null, pos: fitPos(pos.x, pos.y, size.w, size.h, box) };
+    }
+
     /** Handle geometry for a card tucked outside the window: PEEK px stays visible. */
     function peekHandleStyle(edge, pos, box) {
       if (edge === 'left' || edge === 'right') {
@@ -2003,30 +2038,15 @@ window.__ModuleLoader__.load({
         };
       }, []);
 
+      /* Thin shell: the decision itself is resolveRelease(), which is pure and tested. */
       const settle = useCallback((w, hgt) => {
-        const box = bounds();
-        const p = livePos.current;
-        const overflow = {
-          left: -p.x,
-          right: (p.x + w) - box.w,
-          top: box.top - p.y,
-          bottom: (p.y + hgt) - box.h
-        };
-        let target = null;
-        let deepest = PEEK_TRIGGER;
-        for (const key of ['left', 'right', 'top', 'bottom']) {
-          if (overflow[key] > deepest) {
-            deepest = overflow[key];
-            target = key;
-          }
-        }
+        const decision = resolveRelease(livePos.current, { w, h: hgt }, bounds());
         setSnapEdge(null);
-        if (target !== null) {
-          setPeek(target);
+        if (decision.kind === 'peek') {
+          setPeek(decision.side);
           return;
         }
-        const edge = nearestEdge(p.x, p.y, w, hgt, box);
-        applyPos(edge === null ? fitPos(p.x, p.y, w, hgt, box) : snapTo(edge, p.x, p.y, w, hgt, box));
+        applyPos(decision.pos);
       }, [applyPos]);
 
       const restoreFromPeek = useCallback(() => {
