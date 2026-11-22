@@ -6,11 +6,14 @@ const {
   runSelfTestChecks,
   selfTestSummary,
   selfTestMarkdown,
+  subjectPluginName,
+  isOwnDetailPage,
   SELF_TEST_REGISTRATION,
-  SELF_TEST_TIMEOUT
+  SELF_TEST_TIMEOUT,
+  SELF_TEST_PACKAGE
 } = loadPure(
-  ['SELF_TEST_REGISTRATION', 'SELF_TEST_TIMEOUT'],
-  ['runSelfTestChecks', 'selfTestSummary', 'selfTestMarkdown']
+  ['SELF_TEST_REGISTRATION', 'SELF_TEST_TIMEOUT', 'SELF_TEST_PACKAGE'],
+  ['runSelfTestChecks', 'selfTestSummary', 'selfTestMarkdown', 'subjectPluginName', 'isOwnDetailPage']
 );
 
 const words = { pass: '通过', fail: '失败', idle: '未运行' };
@@ -26,6 +29,38 @@ test('registration metadata matches the shared self-test spec', () => {
   assert.equal(SELF_TEST_REGISTRATION.order, 90);
   assert.equal(typeof SELF_TEST_TIMEOUT, 'number');
   assert.ok(SELF_TEST_TIMEOUT > 0 && SELF_TEST_TIMEOUT <= 2000);
+});
+
+/* ---------------------------------------------------------------- own page only */
+
+test('the section renders on this package detail page (bundle subject)', () => {
+  assert.equal(isOwnDetailPage({ kind: 'bundle', pkg: { name: 'dsh-notepad-card' } }), true);
+});
+
+test('the section renders when the loader entry id names this package (item subject)', () => {
+  assert.equal(isOwnDetailPage({ kind: 'item', id: 'include:dsh-notepad-card' }), true);
+  assert.equal(isOwnDetailPage({ kind: 'item', id: 'dsh-notepad-card' }), true);
+});
+
+test('other plugins get null: bundle pages and item pages alike', () => {
+  assert.equal(isOwnDetailPage({ kind: 'bundle', pkg: { name: 'dsh-session-stars' } }), false);
+  assert.equal(isOwnDetailPage({ kind: 'item', id: 'include:dsh-session-todos' }), false);
+  assert.equal(isOwnDetailPage({ kind: 'item', id: 'include:dsh-session-boxes' }), false);
+});
+
+test('malformed subjects count as "not ours" instead of throwing', () => {
+  const cases = [null, undefined, 'x', 42, {}, { kind: 'bundle' }, { kind: 'bundle', pkg: null },
+    { kind: 'bundle', pkg: { name: 7 } }, { kind: 'item' }, { kind: 'item', id: 9 },
+    { kind: 'other', id: 'include:dsh-notepad-card' }];
+  for (const subject of cases) {
+    assert.equal(isOwnDetailPage(subject), false, JSON.stringify(subject));
+    assert.equal(subjectPluginName(subject), undefined, JSON.stringify(subject));
+  }
+});
+
+test('the identity is the published package name, not the directory name', () => {
+  assert.equal(SELF_TEST_PACKAGE, 'dsh-notepad-card');
+  assert.equal(isOwnDetailPage({ kind: 'item', id: 'include:dsh-notepad' }), false, 'the old directory name must not match');
 });
 
 /* ---------------------------------------------------------------- results */

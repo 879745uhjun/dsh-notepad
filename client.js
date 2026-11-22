@@ -1624,6 +1624,31 @@ window.__ModuleLoader__.load({
 
     const SELF_TEST_REGISTRATION = { name: 'plugins.detail.section', id: 'dsh-notepad.selftest', order: 90 };
     const SELF_TEST_TIMEOUT = 2000;
+    /** The package whose detail page owns this section (not the directory name). */
+    const SELF_TEST_PACKAGE = 'dsh-notepad-card';
+
+    /**
+     * The plugin manager renders `plugins.detail.section` on EVERY plugin page and
+     * passes the page's subject: { kind: 'bundle', pkg } or { kind: 'item', id }.
+     * Without this filter our section leaks onto other plugins' pages.
+     */
+    function subjectPluginName(subject) {
+      if (subject === null || typeof subject !== 'object') return undefined;
+      if (subject.kind === 'bundle') {
+        const pkg = subject.pkg;
+        if (pkg === null || typeof pkg !== 'object' || typeof pkg.name !== 'string') return undefined;
+        return pkg.name;
+      }
+      if (subject.kind === 'item' && typeof subject.id === 'string') {
+        return subject.id.indexOf('include:') === 0 ? subject.id.slice('include:'.length) : subject.id;
+      }
+      return undefined;
+    }
+
+    /** True only on this package's own detail page. */
+    function isOwnDetailPage(subject) {
+      return subjectPluginName(subject) === SELF_TEST_PACKAGE;
+    }
 
     /**
      * Runs every check with a hard timeout. A throw, a hang or a non-conforming
@@ -2910,7 +2935,12 @@ window.__ModuleLoader__.load({
           }
         }));
 
-        const SelfTest = (props) => h(SelfTestSection, Object.assign({}, props, { checks: localizeChecks(selfTestChecks) }));
+        /* The seat renders on every plugin page: return null unless the page is ours.
+           The filter lives in this hook-free wrapper so SelfTestSection keeps a stable
+           hook order (returning early inside it would break the rules of hooks). */
+        const SelfTest = (props) => (isOwnDetailPage(props.subject)
+          ? h(SelfTestSection, Object.assign({}, props, { checks: localizeChecks(selfTestChecks) }))
+          : null);
 
         try {
           ctx.slots.inject(SELF_TEST_REGISTRATION.name, () => ctx.slots.register({

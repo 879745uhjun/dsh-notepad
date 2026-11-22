@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## 4.5.2 — 修复自检区块出现在所有插件详情页（P0）
+
+- **现象**：`plugins.detail.section` 是每个插件详情页都会渲染的座位，本插件没做 subject 过滤，
+  于是 boxes / broadcast / stars 等页面顶部都多出一块记事本的自检。
+- **修法**：新增 `subjectPluginName(subject)` 与 `isOwnDetailPage(subject)`：
+  `{kind:'bundle', pkg:{name}}` 取 `pkg.name`；`{kind:'item', id}` 剥掉 `include:` 前缀后比对；
+  与包名 `dsh-notepad-card`（**不是目录名 dsh-notepad**）相等才渲染。
+- **过滤位置**：放在无 hooks 的包装组件里返回 `null`，而不是在 `SelfTestSection` 内部提前 return——
+  后者会让同一个组件实例在“有 hooks / 无 hooks”之间切换，违反 hooks 规则。
+- 测试 64 → 69：bundle 页渲染、item 页渲染、其它插件（bundle/item 两种）返回 null、畸形 subject 不抛异常、旧目录名不匹配。
+
 ## 4.5.1 — settle 拆成纯函数
 
 拖动释放的判定从组件里的 `settle()` 抽成纯函数 `resolveRelease(pos, size, box)`：不读 DOM、不碰 localStorage，返回
